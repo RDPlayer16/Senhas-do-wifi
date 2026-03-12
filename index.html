@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wi-Fi Manager Pro - Scanner Edition</title>
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#4F46E5">
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+    <style>
+        :root {
+            --primary: #4F46E5;
+            --success: #10B981;
+            --danger: #EF4444;
+            --warning: #F59E0B;
+            --scanner: #F97316; /* Laranja para o Scanner */
+            --bg-color: #F3F4F6;
+            --border: #E5E7EB;
+        }
+
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-color); margin: 0; padding: 0; }
+        
+        .sticky-header {
+            position: sticky; top: 0; background: rgba(255, 255, 255, 0.98);
+            border-bottom: 1px solid var(--border); padding: 15px 0; z-index: 100;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+
+        .container { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
+        .header-content { display: flex; flex-direction: column; gap: 12px; }
+        
+        .header-top { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;}
+        .botoes-topo { display: flex; gap: 10px; }
+        h1 { margin: 0; font-size: 22px; color: var(--primary); }
+
+        textarea { 
+            width: 100%; height: 100px; padding: 10px; 
+            font-family: monospace; font-size: 13px;
+            border: 1px solid var(--border); border-radius: 8px;
+            box-sizing: border-box; background: #fff;
+        }
+
+        .controles { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+        input[type="text"] {
+            flex-grow: 1; padding: 10px 15px; font-size: 15px;
+            border: 1px solid var(--border); border-radius: 8px;
+        }
+
+        button { 
+            padding: 10px 18px; font-size: 14px; font-weight: 600;
+            cursor: pointer; background: var(--primary); color: white; 
+            border: none; border-radius: 6px; transition: 0.2s;
+            display: flex; align-items: center; gap: 6px;
+        }
+
+        button:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+        .btn-add { background: var(--success); }
+        .btn-scan { background: var(--scanner); }
+        .btn-export-txt { background: #6366F1; }
+        .btn-export-pdf { background: #A855F7; }
+        .btn-clear { background: var(--danger); }
+
+        .info-status { font-size: 13px; font-weight: bold; margin-left: auto; display: flex; gap: 10px; align-items: center; }
+        .tag-alerta { background: var(--warning); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
+
+        .content-area { padding: 20px; }
+        #output { 
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); 
+            gap: 20px; max-width: 1200px; margin: 0 auto; 
+        }
+
+        .card { 
+            background: #fff; padding: 15px; border-radius: 10px; 
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05); border: 1px solid var(--border);
+            text-align: center; display: flex; flex-direction: column; align-items: center;
+            min-height: 250px;
+        }
+
+        .card h3 { margin: 0 0 5px 0; font-size: 16px; word-break: break-all; }
+        .card p { font-size: 13px; color: #666; background: #f8f8f8; padding: 3px 8px; border-radius: 4px; margin-bottom: 10px; }
+        
+        .qrcode { width: 130px; height: 130px; margin-bottom: 10px; background: #fff; border: 1px solid #eee; display: flex; align-items: center; justify-content: center; }
+
+        .card-actions { display: flex; gap: 5px; width: 100%; margin-top: auto; }
+        .btn-mini { flex: 1; padding: 8px; font-size: 11px; border-radius: 4px; }
+
+        /* Modal e Alertas */
+        .modal-overlay {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center;
+        }
+        .modal-content { background: #fff; padding: 20px; border-radius: 10px; width: 90%; max-width: 350px; display: flex; flex-direction: column; gap: 10px; }
+        .aviso-duplicado { color: var(--danger); font-size: 12px; font-weight: bold; display: none; }
+
+        #reader { width: 100%; border-radius: 8px; overflow: hidden; }
+
+        #toast {
+            visibility: hidden; position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%);
+            background: #1F2937; color: #fff; padding: 12px 24px; border-radius: 8px; z-index: 2000;
+        }
+        #toast.show { visibility: visible; }
+
+        @media print { .sticky-header, #toast, .modal-overlay, .card-actions { display: none !important; } }
+    </style>
+</head>
+<body>
+
+    <div class="sticky-header">
+        <div class="container header-content">
+            <div class="header-top">
+                <h1>📶 Wi-Fi Manager Pro</h1>
+                <div class="botoes-topo">
+                    <button class="btn-scan" onclick="abrirScanner()">📷 Escanear QR</button>
+                    <button class="btn-add" onclick="abrirModal()">➕ Nova Rede</button>
+                </div>
+            </div>
+            <textarea id="listaInput" placeholder="Cole sua lista aqui..."></textarea>
+            <div class="controles">
+                <button id="btnSincronizar" onclick="sincronizar(true)">🔄 Sincronizar</button>
+                <button class="btn-export-txt" onclick="exportarTXT()">💾 Exportar TXT</button>
+                <button class="btn-export-pdf" onclick="exportarPDF()">📄 Exportar PDF</button>
+                <button class="btn-clear" onclick="limpar()">🗑️ Limpar</button>
+                <input type="text" id="searchInput" placeholder="🔍 Pesquisar..." onkeyup="filtrar()">
+                <div id="statusContador" class="info-status"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="content-area"><div id="output"></div></div>
+    <div id="toast">Copiado!</div>
+
+    <div id="modalNovaRede" class="modal-overlay">
+        <div class="modal-content">
+            <h3 style="margin:0">Nova Rede</h3>
+            <input type="text" id="novoSSID" placeholder="Nome da Rede" oninput="checarDuplicadoModal()">
+            <input type="text" id="novaSenha" placeholder="Senha" oninput="checarDuplicadoModal()">
+            <div id="msgDuplicadoModal" class="aviso-duplicado">⚠️ Esta combinação já existe!</div>
+            <div style="display:flex; gap:10px; justify-content: flex-end;">
+                <button style="background:#666" onclick="fecharModal()">Cancelar</button>
+                <button id="btnSalvarModal" class="btn-add" onclick="salvarNova()">Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modalScanner" class="modal-overlay">
+        <div class="modal-content">
+            <h3 style="margin:0; text-align:center;">Ler QR Code Wi-Fi</h3>
+            <p style="font-size:12px; color:#666; text-align:center; margin:0;">Aponte a câmera para o código</p>
+            <div id="reader"></div>
+            <div style="display:flex; gap:10px; justify-content: center;">
+                <button style="background:#EF4444; width:100%" onclick="fecharScanner()">Cancelar / Fechar Câmera</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const DB_KEY = 'wifi_pro_db_v10';
+        let observer;
+        let scannerInstancia = null;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            observer = new IntersectionObserver((entries) => {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        const container = entry.target;
+                        if (!container.dataset.rendered) {
+                            renderQR(container, container.dataset.ssid, container.dataset.pass);
+                            container.dataset.rendered = "true";
+                        }
+                    }
+                });
+            }, { rootMargin: '100px' });
+
+            const salvo = localStorage.getItem(DB_KEY);
+            if (salvo) {
+                document.getElementById('listaInput').value = salvo;
+                sincronizar(false);
+            }
+        });
+
+        // ----------------------------------------------------
+        // LÓGICA DO SCANNER DE QR CODE (NOVO)
+        // ----------------------------------------------------
+        function abrirScanner() {
+            document.getElementById('modalScanner').style.display = 'flex';
+            
+            // Configura o leitor
+            scannerInstancia = new Html5QrcodeScanner("reader", { 
+                fps: 10, 
+                qrbox: {width: 250, height: 250},
+                rememberLastUsedCamera: true
+            }, false);
+
+            scannerInstancia.render(onScanSuccess, onScanFailure);
+        }
+
+        function fecharScanner() {
+            if (scannerInstancia) {
+                scannerInstancia.clear().catch(error => console.error("Falha ao limpar o scanner", error));
+                scannerInstancia = null;
+            }
+            document.getElementById('modalScanner').style.display = 'none';
+        }
+
+        function onScanSuccess(decodedText) {
+            // Um QR Code de Wi-Fi tem o formato: WIFI:T:WPA;S:NomeDaRede;P:Senha;;
+            if (decodedText.toUpperCase().startsWith("WIFI:")) {
+                let ssid = "";
+                let senha = "";
+                
+                // Quebra a string para extrair S: (SSID) e P: (Password)
+                const partes = decodedText.substring(5).split(";");
+                for (let parte of partes) {
+                    if (parte.toUpperCase().startsWith("S:")) {
+                        ssid = parte.substring(2);
+                    } else if (parte.toUpperCase().startsWith("P:")) {
+                        senha = parte.substring(2);
+                    }
+                }
+
+                if (ssid) {
+                    fecharScanner(); // Desliga a câmera
+                    abrirModal();    // Abre a janela de Nova Rede
+                    
+                    document.getElementById('novoSSID').value = ssid;
+                    document.getElementById('novaSenha').value = senha || "SEM_SENHA";
+                    
+                    checarDuplicadoModal(); // Já verifica se existe
+                    mostrarToast("Rede detectada com sucesso!");
+                }
+            } else {
+                mostrarToast("QR Code inválido. Não é uma rede Wi-Fi.");
+                fecharScanner();
+            }
+        }
+
+        function onScanFailure(error) {
+            // Falhas contínuas enquanto a câmera tenta focar. Ignoramos.
+        }
+
+        // ----------------------------------------------------
+        // LÓGICA DO SISTEMA EXISTENTE
+        // ----------------------------------------------------
+        function obterListaLimpa() {
+            const txt = document.getElementById('listaInput').value;
+            const linhasRaw = txt.split('\n').map(l => l.trim()).filter(l => l.length > 2);
+            const redesUnicas = new Map();
+            let duplicados = 0;
+
+            linhasRaw.forEach(linha => {
+                const l = linha.replace(/^\*\s*/, '');
+                const p = l.indexOf(':');
+                if (p !== -1) {
+                    let ssid = l.substring(0, p).trim().replace(/[\u200B-\u200D\uFEFF\u200E\u200F]/g, '');
+                    let pass = l.substring(p + 1).trim().replace(/:$/, '').replace(/[\u200B-\u200D\uFEFF\u200E\u200F]/g, '');
+                    if (ssid && pass) {
+                        const chave = `${ssid}|||${pass}`;
+                        if (!redesUnicas.has(chave)) {
+                            redesUnicas.set(chave, {ssid, pass});
+                        } else {
+                            duplicados++;
+                        }
+                    }
+                }
+            });
+
+            return { 
+                lista: Array.from(redesUnicas.values()).sort((a, b) => a.ssid.localeCompare(b.ssid)),
+                duplicados: duplicados 
+            };
+        }
+
+        function sincronizar(manual) {
+            const area = document.getElementById('listaInput');
+            
+            if (!area.value.trim()) {
+                if (manual) mostrarToast("A caixa de texto está vazia! Nenhuma rede foi apagada.");
+                return;
+            }
+
+            const output = document.getElementById('output');
+            const status = document.getElementById('statusContador');
+            
+            output.innerHTML = '';
+            const { lista, duplicados } = obterListaLimpa();
+            
+            let novoTexto = "";
+            lista.forEach(red => {
+                addCard(red.ssid, red.pass);
+                novoTexto += `* ${red.ssid}: ${red.pass}\n\n`;
+            });
+
+            area.value = novoTexto.trim();
+            localStorage.setItem(DB_KEY, area.value);
+
+            let htmlStatus = `<span style="color:green">✅ ${lista.length}</span>`;
+            if(duplicados > 0) {
+                htmlStatus += `<span class="tag-alerta">⚠️ ${duplicados} duplicatas limpas</span>`;
+                if(manual) mostrarToast(`${duplicados} duplicatas foram limpas!`);
+            } else if (manual) {
+                mostrarToast("Sincronizado com sucesso!");
+            }
+            status.innerHTML = htmlStatus;
+        }
+
+        function addCard(ssid, pass) {
+            const div = document.createElement('div');
+            div.className = 'card';
+            div.innerHTML = `<h3>${ssid}</h3><p>${pass}</p>
+                <div class="qrcode" data-ssid="${ssid}" data-pass="${pass}">Carregando...</div>
+                <div class="card-actions">
+                    <button class="btn-mini" style="background:#f0f0f0; color:#333" onclick="copy('${pass}')">📋 Copiar</button>
+                    <button class="btn-mini" style="background:#10B981; color:#fff" onclick="down(this.parentElement.parentElement, '${ssid}')">⬇️ Baixar Imagem</button>
+                </div>`;
+            document.getElementById('output').appendChild(div);
+            observer.observe(div.querySelector('.qrcode'));
+        }
+
+        function renderQR(container, ssid, pass) {
+            container.innerHTML = "";
+            new QRCode(container, {
+                text: unescape(encodeURIComponent(`WIFI:S:${ssid};T:WPA;P:${pass};;`)),
+                width: 130, height: 130
+            });
+        }
+
+        function checarDuplicadoModal() {
+            const s = document.getElementById('novoSSID').value.trim();
+            const p = document.getElementById('novaSenha').value.trim();
+            const { lista } = obterListaLimpa();
+            const existe = lista.some(r => r.ssid === s && r.pass === p);
+            
+            document.getElementById('msgDuplicadoModal').style.display = existe ? 'block' : 'none';
+            document.getElementById('btnSalvarModal').disabled = existe;
+        }
+
+        function copy(t) {
+            const el = document.createElement('textarea');
+            el.value = t; document.body.appendChild(el); el.select();
+            document.execCommand('copy'); document.body.removeChild(el);
+            mostrarToast("Copiado!");
+        }
+
+        function down(card, ssid) {
+            const canvas = card.querySelector('canvas');
+            const link = document.createElement('a');
+            link.download = `wifi_${ssid.replace(/\s/g, '_')}.png`;
+            link.href = canvas.toDataURL(); link.click();
+        }
+
+        function filtrar() {
+            const val = document.getElementById('searchInput').value.toLowerCase();
+            document.querySelectorAll('.card').forEach(c => {
+                c.style.display = c.innerText.toLowerCase().includes(val) ? 'flex' : 'none';
+            });
+        }
+
+        function exportarTXT() {
+            const { lista } = obterListaLimpa();
+            let txt = lista.map(r => `* ${r.ssid}: ${r.pass}`).join('\n\n');
+            const blob = new Blob(["\ufeff", txt], {type: 'text/plain;charset=utf-8'});
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob); a.download = 'backup_wifi.txt'; a.click();
+        }
+
+        async function exportarPDF() {
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            const { lista } = obterListaLimpa();
+            doc.setFont("courier", "normal"); doc.setFontSize(10);
+            let y = 15;
+            lista.forEach((red) => {
+                if (y > 280) { doc.addPage(); y = 15; }
+                doc.text(`* ${red.ssid}: ${red.pass}`, 15, y); y += 6;
+            });
+            doc.save("backup_wifi.pdf");
+        }
+
+        function limpar() { 
+            if(confirm("Deseja apagar TUDO (do painel e do armazenamento local)?")) { 
+                localStorage.removeItem(DB_KEY); 
+                document.getElementById('listaInput').value = '';
+                location.reload(); 
+            } 
+        }
+
+        function abrirModal() { document.getElementById('modalNovaRede').style.display = 'flex'; }
+        function fecharModal() { 
+            document.getElementById('modalNovaRede').style.display = 'none'; 
+            document.getElementById('novoSSID').value = '';
+            document.getElementById('novaSenha').value = '';
+            document.getElementById('msgDuplicadoModal').style.display = 'none'; 
+            document.getElementById('btnSalvarModal').disabled = false; 
+        }
+
+        function mostrarToast(m) { 
+            const t = document.getElementById('toast'); 
+            t.innerText = m; 
+            t.className = 'show'; 
+            setTimeout(() => t.className = '', 3000); 
+        }
+
+        function salvarNova() {
+            const s = document.getElementById('novoSSID').value.trim();
+            const p = document.getElementById('novaSenha').value.trim();
+            if(!s || !p) return;
+            
+            const area = document.getElementById('listaInput');
+            const prefixo = area.value.trim() !== '' ? '\n\n' : '';
+            area.value += `${prefixo}* ${s}: ${p}`;
+            
+            fecharModal(); 
+            sincronizar(true);
+        }
+    <script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./sw.js')
+        .then(reg => console.log('App pronto para funcionar offline!'))
+        .catch(err => console.log('Falha no motor offline: ', err));
+    });
+  }
+</script>
+
+</body>
+</html>
