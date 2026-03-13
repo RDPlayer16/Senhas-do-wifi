@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wi-Fi Manager Pro - Sync Edition</title>
+    <title>Wi-Fi Manager Pro - Offline First</title>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#4F46E5">
 
@@ -18,6 +18,7 @@
             --danger: #EF4444;
             --warning: #F59E0B;
             --scanner: #F97316;
+            --geo: #0EA5E9;
             --bg-color: #F3F4F6;
             --border: #E5E7EB;
         }
@@ -36,7 +37,6 @@
         .header-top { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;}
         .botoes-topo { display: flex; gap: 10px; }
         
-        /* Título clicável para abrir o menu secreto */
         h1 { margin: 0; font-size: 22px; color: var(--primary); cursor: pointer; user-select: none; }
         h1:active { transform: scale(0.98); }
 
@@ -62,10 +62,12 @@
         }
 
         button:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
+        button:disabled { opacity: 0.6; cursor: not-allowed; }
         .btn-add { background: var(--success); }
         .btn-scan { background: var(--scanner); }
         .btn-export-txt { background: #6366F1; }
         .btn-export-pdf { background: #A855F7; }
+        .btn-geo { background: var(--geo); }
 
         .info-status { font-size: 13px; font-weight: bold; margin-left: auto; display: flex; gap: 10px; align-items: center; }
 
@@ -79,10 +81,15 @@
             background: #fff; padding: 15px; border-radius: 10px; 
             box-shadow: 0 2px 5px rgba(0,0,0,0.05); border: 1px solid var(--border);
             text-align: center; display: flex; flex-direction: column; align-items: center;
-            min-height: 250px;
+            min-height: 250px; position: relative;
         }
 
-        .card h3 { margin: 0 0 5px 0; font-size: 16px; word-break: break-all; }
+        .badge-geo {
+            position: absolute; top: 10px; right: 10px; background: #E0F2FE; color: #0369A1;
+            font-size: 10px; padding: 3px 6px; border-radius: 10px; font-weight: bold;
+        }
+
+        .card h3 { margin: 0 0 5px 0; font-size: 16px; word-break: break-all; width: 80%; }
         .card p { font-size: 13px; color: #666; background: #f8f8f8; padding: 3px 8px; border-radius: 4px; margin-bottom: 10px; }
         
         .qrcode { width: 130px; height: 130px; margin-bottom: 10px; background: #fff; border: 1px solid #eee; display: flex; align-items: center; justify-content: center; }
@@ -95,8 +102,8 @@
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center;
         }
-        .modal-content { background: #fff; padding: 20px; border-radius: 10px; width: 90%; max-width: 400px; display: flex; flex-direction: column; gap: 10px; }
-        .aviso-duplicado { color: var(--danger); font-size: 12px; font-weight: bold; display: none; }
+        .modal-content { background: #fff; padding: 20px; border-radius: 10px; width: 90%; max-width: 400px; display: flex; flex-direction: column; gap: 12px; }
+        .aviso-duplicado { font-size: 12px; font-weight: bold; display: none; text-align: center; padding: 8px; border-radius: 6px; }
 
         #reader { width: 100%; border-radius: 8px; overflow: hidden; }
 
@@ -106,7 +113,9 @@
         }
         #toast.show { visibility: visible; }
 
-        @media print { .sticky-header, #toast, .modal-overlay, .card-actions, .btn-delete { display: none !important; } }
+        .checkbox-container { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #444; background: #f9fafb; padding: 8px; border-radius: 6px; border: 1px solid #e5e7eb;}
+
+        @media print { .sticky-header, #toast, .modal-overlay, .card-actions, .btn-delete, .badge-geo { display: none !important; } }
     </style>
 </head>
 <body>
@@ -116,6 +125,7 @@
             <div class="header-top">
                 <h1 onclick="abrirModalAvancado()" title="Clique para sincronização manual">📶 Wi-Fi Manager Pro</h1>
                 <div class="botoes-topo">
+                    <button class="btn-geo" onclick="buscarSenhasPorPerto()" id="btnRadar">📍 Por Perto</button>
                     <button class="btn-scan" onclick="abrirScanner()">📷 Escanear</button>
                     <button class="btn-add" onclick="abrirModal()">➕ Nova</button>
                 </div>
@@ -136,7 +146,6 @@
     <div id="modalAvancado" class="modal-overlay">
         <div class="modal-content" style="max-width: 500px;">
             <h3 style="margin:0; color: var(--primary);">⚙️ Modo Desenvolvedor / Sync</h3>
-            <p style="font-size: 12px; color: #666; margin: 0;">Cole sua lista aqui para enviar em lote para a nuvem.</p>
             <textarea id="listaInputOculta" placeholder="* NomeDaRede: SenhaDaRede..."></textarea>
             <div style="display:flex; gap:10px; justify-content: space-between; align-items: center;">
                 <span id="statusSyncManual" style="font-size: 12px; font-weight: bold;"></span>
@@ -153,8 +162,18 @@
             <h3 style="margin:0">Nova Rede Wi-Fi</h3>
             <input type="text" id="novoSSID" placeholder="Nome da Rede (SSID)" oninput="checarDuplicadoModal()">
             <input type="text" id="novaSenha" placeholder="Senha" oninput="checarDuplicadoModal()">
-            <div id="msgDuplicadoModal" class="aviso-duplicado">⚠️ Esta rede já existe!</div>
-            <div style="display:flex; gap:10px; justify-content: flex-end;">
+            
+            <label class="checkbox-container" id="containerCheckLocalizacao">
+                <input type="checkbox" id="checkLocalizacao" checked>
+                Salvar localização atual da rede (GPS)
+            </label>
+
+            <div id="msgDuplicadoModal" class="aviso-duplicado"></div>
+            
+            <button id="btnAdicionarGeo" class="btn-geo" style="display:none; width:100%; justify-content:center; margin-top:5px;" onclick="atualizarGeoRedeExistente()">📍 Adicionar Localização à Rede</button>
+            <button id="btnAtualizarGeo" class="btn-geo" style="display:none; width:100%; justify-content:center; margin-top:5px; background:#4F46E5;" onclick="atualizarGeoRedeExistente()">🔄 Atualizar Localização da Rede</button>
+
+            <div style="display:flex; gap:10px; justify-content: flex-end; margin-top: 10px;">
                 <button style="background:#666" onclick="fecharModal()">Cancelar</button>
                 <button id="btnSalvarModal" class="btn-add" onclick="salvarRedeLocalENuvem()">Salvar</button>
             </div>
@@ -171,7 +190,7 @@
 
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
-        import { getDatabase, ref, push, set, onValue, remove, get } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js";
+        import { getDatabase, ref, push, set, onValue, remove, get, update } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyCqDSP5SAZdMrHYvyeq9z9lZDp3UTcKu7Y",
@@ -186,98 +205,210 @@
         const app = initializeApp(firebaseConfig);
         const db = getDatabase(app);
         const DB_KEY = 'wifi_pro_db_v9';
+        const DB_GEO_KEY = 'wifi_pro_db_geo_v1';
 
         window.redesEmMemoria = [];
-        let firebaseConectado = false;
+        window.redeDuplicadaAtual = null; 
+        let mostrandoApenasProximas = false;
 
-        // 1. CARREGAMENTO OFFLINE (Primeira coisa que acontece)
+        // 1. CARREGAMENTO INICIAL OFFLINE
         function carregarOffline() {
-            const salvo = localStorage.getItem(DB_KEY);
-            if (salvo) {
-                document.getElementById('listaInputOculta').value = salvo;
-                renderizarInterface(obterListaDoTexto(salvo));
-                document.getElementById('statusContador').innerHTML = `<span style="color:gray">📱 Modo Offline Ativo</span>`;
+            const cacheGeo = localStorage.getItem(DB_GEO_KEY);
+            if (cacheGeo) { 
+                window.redesEmMemoria = JSON.parse(cacheGeo);
+                renderizarInterface(window.redesEmMemoria); 
             }
+            document.getElementById('statusContador').innerHTML = `<span style="color:gray">📱 Modo Offline</span>`;
         }
         carregarOffline();
 
-        // 2. SINCRONIZAÇÃO COM FIREBASE (Quando tem internet)
+        // 2. ESCUTA A NUVEM (Se tiver internet, atualiza por cima)
         const redesRef = ref(db, 'redes_wifi');
         onValue(redesRef, (snapshot) => {
-            firebaseConectado = true;
             const dados = snapshot.val();
             let listaNuvem = [];
             
             if (dados) {
                 const chaves = Object.keys(dados);
-                listaNuvem = chaves.map(c => ({ id: c, ssid: dados[c].ssid, senha: dados[c].senha }));
+                listaNuvem = chaves.map(c => ({ 
+                    id: c, ssid: dados[c].ssid, senha: dados[c].senha, lat: dados[c].lat || null, lng: dados[c].lng || null
+                }));
             }
 
-            // Ordena e atualiza a interface
             listaNuvem.sort((a, b) => a.ssid.localeCompare(b.ssid));
-            renderizarInterface(listaNuvem);
             
-            // Atualiza o backup local e a caixa de texto invisível para funcionar offline depois
-            const txtBackup = listaNuvem.map(r => `* ${r.ssid}: ${r.senha}`).join('\n\n');
-            localStorage.setItem(DB_KEY, txtBackup);
-            document.getElementById('listaInputOculta').value = txtBackup;
+            // Só atualiza a tela se não estivermos na tela de Radar
+            if (!mostrandoApenasProximas) { 
+                renderizarInterface(listaNuvem); 
+            } else { 
+                window.redesEmMemoria = listaNuvem; 
+            }
             
-            document.getElementById('statusContador').innerHTML = `<span style="color:green">☁️ Nuvem Sincronizada (${listaNuvem.length})</span>`;
-        }, (error) => {
-            console.error("Erro Firebase:", error);
+            atualizarBackupLocal(listaNuvem);
+            document.getElementById('statusContador').innerHTML = `<span style="color:green">☁️ Sincronizado (${listaNuvem.length})</span>`;
         });
 
-        // 3. SALVAR NOVA REDE (Local + Nuvem)
-        window.salvarRedeLocalENuvem = function() {
+        // FUNÇÃO DE BACKUP LOCAL
+        function atualizarBackupLocal(lista) {
+            localStorage.setItem(DB_GEO_KEY, JSON.stringify(lista));
+            const txtBackup = lista.map(r => `* ${r.ssid}: ${r.senha}`).join('\n\n');
+            localStorage.setItem(DB_KEY, txtBackup);
+            const inputOculta = document.getElementById('listaInputOculta');
+            if(inputOculta) inputOculta.value = txtBackup;
+        }
+
+        // ==========================================
+        // LÓGICA OFFLINE-FIRST (SALVAR, ATUALIZAR, EXCLUIR)
+        // ==========================================
+
+        window.salvarRedeLocalENuvem = async function() {
             const s = document.getElementById('novoSSID').value.trim();
             const p = document.getElementById('novaSenha').value.trim();
+            const usarGeo = document.getElementById('checkLocalizacao').checked;
             if(!s || !p) return;
 
-            // Salva logo no texto/offline para não perder
-            const area = document.getElementById('listaInputOculta');
-            const prefixo = area.value.trim() !== '' ? '\n\n' : '';
-            area.value += `${prefixo}* ${s}: ${p}`;
-            localStorage.setItem(DB_KEY, area.value);
+            const btnSalvar = document.getElementById('btnSalvarModal');
+            let lat = null, lng = null;
+
+            if (usarGeo) {
+                btnSalvar.innerText = "📍 GPS..."; btnSalvar.disabled = true;
+                try {
+                    const posicao = await new Promise((resolve, reject) => { navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000, enableHighAccuracy: true }); });
+                    lat = posicao.coords.latitude; lng = posicao.coords.longitude;
+                } catch (e) {
+                    alert("GPS não encontrado. Salvando sem localização.");
+                }
+            }
+
+            // GERA ID LOCALMENTE E ATUALIZA TELA NA HORA!
+            const novaRedeRef = push(redesRef); // Cria a ID instantaneamente
+            const novaRedeObj = { id: novaRedeRef.key, ssid: s, senha: p, lat: lat, lng: lng };
             
-            // Tenta mandar pra nuvem
-            const novaRedeRef = push(redesRef); 
-            set(novaRedeRef, { ssid: s, senha: p }).catch(e => console.log("Salvo offline. Irá subir quando conectar."));
+            // 1. Manda pra nuvem em background (não trava a tela)
+            set(novaRedeRef, { ssid: s, senha: p, lat: lat, lng: lng }).catch(e => console.log("Salvo na fila offline"));
             
-            fecharModal();
-            mostrarToast("Rede salva!");
-            if(!firebaseConectado) carregarOffline(); // Atualiza a tela se estiver sem net
+            // 2. Atualiza Memória e Tela Imediatamente
+            window.redesEmMemoria.push(novaRedeObj);
+            window.redesEmMemoria.sort((a, b) => a.ssid.localeCompare(b.ssid));
+            atualizarBackupLocal(window.redesEmMemoria);
+            if (!mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
+            
+            fecharModal(); 
+            btnSalvar.innerText = "Salvar"; btnSalvar.disabled = false;
+            mostrarToast("Salvo localmente! Subirá em breve.");
         };
 
-        // 4. EXCLUIR REDE
+        window.atualizarGeoRedeExistente = async function() {
+            if (!window.redeDuplicadaAtual || !window.redeDuplicadaAtual.id) return;
+            const rede = window.redeDuplicadaAtual;
+            const isAtualizacao = rede.lat != null;
+            const btn = isAtualizacao ? document.getElementById('btnAtualizarGeo') : document.getElementById('btnAdicionarGeo');
+            const textoOriginal = btn.innerText;
+
+            btn.innerText = "📍 Obtendo GPS..."; btn.disabled = true;
+
+            try {
+                const pos = await new Promise((resolve, reject) => {
+                    navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000, enableHighAccuracy: true });
+                });
+                const novaLat = pos.coords.latitude; const novaLng = pos.coords.longitude;
+
+                if (isAtualizacao) {
+                    const dist = calcularDistancia(novaLat, novaLng, rede.lat, rede.lng);
+                    if (dist <= 30) { 
+                        alert(`Você está a ${Math.round(dist)} metros do local salvo. A localização já está correta.`);
+                        fecharModal(); return;
+                    }
+                }
+
+                // 1. Atualiza Nuvem em background
+                update(ref(db, 'redes_wifi/' + rede.id), { lat: novaLat, lng: novaLng }).catch(e => console.log("Update na fila offline"));
+                
+                // 2. Atualiza Local e Tela Imediatamente
+                const index = window.redesEmMemoria.findIndex(r => r.id === rede.id);
+                if(index !== -1) {
+                    window.redesEmMemoria[index].lat = novaLat;
+                    window.redesEmMemoria[index].lng = novaLng;
+                }
+                atualizarBackupLocal(window.redesEmMemoria);
+                if (!mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
+
+                mostrarToast("GPS Atualizado Localmente!");
+                fecharModal();
+
+            } catch (error) {
+                alert("Erro ao obter GPS. Verifique a permissão.");
+                btn.innerText = textoOriginal; btn.disabled = false;
+            }
+        };
+
         window.excluirRede = function(idFirebase, ssid) {
             if(confirm(`Excluir a rede "${ssid}" permanentemente?`)) {
-                if(idFirebase && idFirebase !== 'undefined') {
-                    remove(ref(db, 'redes_wifi/' + idFirebase));
-                }
+                // 1. Remove da Nuvem em background
+                if(idFirebase && idFirebase !== 'undefined') remove(ref(db, 'redes_wifi/' + idFirebase)).catch(e=>console.log("Delete na fila"));
                 
-                // Remove do texto/offline
-                let txt = document.getElementById('listaInputOculta').value;
-                const regex = new RegExp(`\\*\\s*${ssid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:.*(\n\n)?`, 'g');
-                txt = txt.replace(regex, '').trim();
-                document.getElementById('listaInputOculta').value = txt;
-                localStorage.setItem(DB_KEY, txt);
+                // 2. Atualiza Local e Tela Imediatamente
+                window.redesEmMemoria = window.redesEmMemoria.filter(r => r.id !== idFirebase);
+                atualizarBackupLocal(window.redesEmMemoria);
+                if (!mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
                 
-                if(!firebaseConectado) carregarOffline();
+                mostrarToast("Rede Excluída!");
             }
         }
 
-        // 5. FUNÇÃO DO MENU SECRETO: ENVIAR TEXTO PARA NUVEM
+        // ==========================================
+
+        function calcularDistancia(lat1, lon1, lat2, lon2) {
+            const R = 6371e3; const φ1 = lat1 * Math.PI/180; const φ2 = lat2 * Math.PI/180;
+            const Δφ = (lat2-lat1) * Math.PI/180; const Δλ = (lon2-lon1) * Math.PI/180;
+            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
+            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+        }
+
+        window.buscarSenhasPorPerto = function() {
+            const btnRadar = document.getElementById('btnRadar');
+            if (mostrandoApenasProximas) {
+                mostrandoApenasProximas = false; renderizarInterface(window.redesEmMemoria);
+                btnRadar.innerText = "📍 Por Perto"; btnRadar.style.background = "var(--geo)";
+                mostrarToast("Mostrando todas as redes."); return;
+            }
+
+            btnRadar.innerText = "Buscando..."; btnRadar.disabled = true;
+            navigator.geolocation.getCurrentPosition((pos) => {
+                const minhaLat = pos.coords.latitude; const minhaLng = pos.coords.longitude;
+                const redesProximas = window.redesEmMemoria.filter(rede => {
+                    if (!rede.lat || !rede.lng) return false;
+                    const distancia = calcularDistancia(minhaLat, minhaLng, rede.lat, rede.lng);
+                    rede.distancia_atual = distancia; return distancia <= 150;
+                });
+
+                redesProximas.sort((a, b) => a.distancia_atual - b.distancia_atual);
+                mostrandoApenasProximas = true; renderizarInterface(redesProximas, true);
+                
+                btnRadar.innerText = "❌ Limpar Radar"; btnRadar.style.background = "var(--danger)"; btnRadar.disabled = false;
+                if (redesProximas.length === 0) mostrarToast("Nenhuma rede num raio de 150m.");
+                else mostrarToast(`Encontradas ${redesProximas.length} redes perto!`);
+            }, (erro) => {
+                btnRadar.innerText = "📍 Por Perto"; btnRadar.disabled = false; alert("Ative a localização do seu dispositivo.");
+            }, { timeout: 10000, enableHighAccuracy: true }); // Timeout adicionado para não travar offline
+        };
+
         window.sincronizarParaNuvem = async function() {
             const status = document.getElementById('statusSyncManual');
-            status.innerText = "Sincronizando...";
-            status.style.color = "var(--warning)";
-
+            status.innerText = "Sincronizando..."; status.style.color = "var(--warning)";
             const textoManual = document.getElementById('listaInputOculta').value;
-            localStorage.setItem(DB_KEY, textoManual); // Salva o novo texto como backup
-            const listaManual = obterListaDoTexto(textoManual);
+            
+            const linhasRaw = textoManual.split('\n').map(l => l.trim()).filter(l => l.length > 2);
+            const listaManual = [];
+            linhasRaw.forEach(linha => {
+                const l = linha.replace(/^\*\s*/, ''); const p = l.indexOf(':');
+                if (p !== -1) {
+                    let ssid = l.substring(0, p).trim(); let senha = l.substring(p + 1).trim().replace(/:$/, '');
+                    if (ssid && senha) listaManual.push({ssid: ssid, senha: senha});
+                }
+            });
 
             try {
-                // Pega o que já tem na nuvem para não duplicar
                 const snapshot = await get(redesRef);
                 const dadosNuvem = snapshot.val() || {};
                 const senhasNuvem = Object.values(dadosNuvem).map(r => `${r.ssid}|||${r.senha}`);
@@ -290,43 +421,21 @@
                         enviadas++;
                     }
                 }
-                
-                status.innerText = `Sucesso! ${enviadas} novas redes enviadas.`;
-                status.style.color = "var(--success)";
+                status.innerText = `Sucesso! ${enviadas} redes enviadas.`; status.style.color = "var(--success)";
                 setTimeout(() => fecharModalAvancado(), 2000);
-            } catch(e) {
-                status.innerText = "Erro ao conectar com Firebase.";
-                status.style.color = "var(--danger)";
-            }
+            } catch(e) { status.innerText = "Sem internet para envio manual."; status.style.color = "var(--danger)"; }
         };
 
-        // Função auxiliar para quebrar o texto da textarea em Array
-        function obterListaDoTexto(txt) {
-            const linhasRaw = txt.split('\n').map(l => l.trim()).filter(l => l.length > 2);
-            const redes = [];
-            linhasRaw.forEach(linha => {
-                const l = linha.replace(/^\*\s*/, '');
-                const p = l.indexOf(':');
-                if (p !== -1) {
-                    let ssid = l.substring(0, p).trim();
-                    let senha = l.substring(p + 1).trim().replace(/:$/, '');
-                    if (ssid && senha) redes.push({ssid: ssid, senha: senha});
-                }
-            });
-            return redes;
-        }
-
-        // Função central para desenhar os cartões
-        function renderizarInterface(lista) {
-            window.redesEmMemoria = lista;
-            const output = document.getElementById('output');
-            output.innerHTML = '';
-            
+        function renderizarInterface(lista, modoRadar = false) {
+            if (!modoRadar) window.redesEmMemoria = lista; 
+            const output = document.getElementById('output'); output.innerHTML = '';
             lista.forEach(red => {
-                const div = document.createElement('div');
-                div.className = 'card';
-                div.dataset.nomeRede = red.ssid.toLowerCase();
-                div.innerHTML = `<h3>${red.ssid}</h3><p>${red.senha}</p>
+                const div = document.createElement('div'); div.className = 'card'; div.dataset.nomeRede = red.ssid.toLowerCase();
+                let geoTag = "";
+                if (modoRadar && red.distancia_atual !== undefined) geoTag = `<div class="badge-geo" style="background:#DCFCE7; color:#166534">A ${Math.round(red.distancia_atual)}m</div>`;
+                else if (red.lat) geoTag = `<div class="badge-geo">📍 Local Salvo</div>`;
+
+                div.innerHTML = `${geoTag}<h3>${red.ssid}</h3><p>${red.senha}</p>
                     <div class="qrcode" data-ssid="${red.ssid}" data-pass="${red.senha}">Carregando...</div>
                     <div class="card-actions">
                         <button class="btn-mini" style="background:#f0f0f0; color:#333" onclick="copy('${red.senha}')">📋 Copiar</button>
@@ -346,10 +455,7 @@
                         const container = entry.target;
                         if (!container.dataset.rendered) {
                             container.innerHTML = "";
-                            new QRCode(container, {
-                                text: unescape(encodeURIComponent(`WIFI:S:${container.dataset.ssid};T:WPA;P:${container.dataset.pass};;`)),
-                                width: 130, height: 130
-                            });
+                            new QRCode(container, { text: unescape(encodeURIComponent(`WIFI:S:${container.dataset.ssid};T:WPA;P:${container.dataset.pass};;`)), width: 130, height: 130 });
                             container.dataset.rendered = "true";
                         }
                     }
@@ -357,79 +463,73 @@
             }, { rootMargin: '100px' });
         });
 
+        function checarDuplicadoModal() {
+            const s = document.getElementById('novoSSID').value.trim();
+            const p = document.getElementById('novaSenha').value.trim();
+            window.redeDuplicadaAtual = window.redesEmMemoria.find(r => r.ssid === s && r.senha === p);
+            
+            const msgDuplicado = document.getElementById('msgDuplicadoModal');
+            const btnSalvar = document.getElementById('btnSalvarModal');
+            const containerCheck = document.getElementById('containerCheckLocalizacao');
+            const btnAddGeo = document.getElementById('btnAdicionarGeo');
+            const btnUpdGeo = document.getElementById('btnAtualizarGeo');
+
+            if (window.redeDuplicadaAtual) {
+                msgDuplicado.style.display = 'block'; btnSalvar.style.display = 'none'; containerCheck.style.display = 'none';
+                if (!window.redeDuplicadaAtual.lat) {
+                    msgDuplicado.innerText = "ℹ️ Esta rede já existe, mas está sem localização salva.";
+                    msgDuplicado.style.background = "#FEF3C7"; msgDuplicado.style.color = "#92400E";
+                    btnAddGeo.style.display = 'flex'; btnUpdGeo.style.display = 'none';
+                } else {
+                    msgDuplicado.innerText = "ℹ️ Esta rede já existe e possui localização salva.";
+                    msgDuplicado.style.background = "#E0F2FE"; msgDuplicado.style.color = "#0369A1";
+                    btnAddGeo.style.display = 'none'; btnUpdGeo.style.display = 'flex';
+                }
+            } else {
+                msgDuplicado.style.display = 'none'; btnSalvar.style.display = 'flex'; containerCheck.style.display = 'flex';
+                btnAddGeo.style.display = 'none'; btnUpdGeo.style.display = 'none';
+            }
+        }
+
         let scannerInstancia = null;
         function abrirScanner() {
             document.getElementById('modalScanner').style.display = 'flex';
             scannerInstancia = new Html5QrcodeScanner("reader", { fps: 10, qrbox: {width: 250, height: 250} }, false);
             scannerInstancia.render((decodedText) => {
                 if (decodedText.toUpperCase().startsWith("WIFI:")) {
-                    let ssid = "", senha = "";
-                    const partes = decodedText.substring(5).split(";");
+                    let ssid = "", senha = ""; const partes = decodedText.substring(5).split(";");
                     for (let parte of partes) {
                         if (parte.toUpperCase().startsWith("S:")) ssid = parte.substring(2);
                         else if (parte.toUpperCase().startsWith("P:")) senha = parte.substring(2);
                     }
                     if (ssid) {
-                        fecharScanner();
-                        abrirModal();
-                        document.getElementById('novoSSID').value = ssid;
-                        document.getElementById('novaSenha').value = senha || "SEM_SENHA";
+                        fecharScanner(); abrirModal();
+                        document.getElementById('novoSSID').value = ssid; document.getElementById('novaSenha').value = senha || "SEM_SENHA";
                         checarDuplicadoModal();
                     }
                 }
-            }, (error) => {});
+            }, () => {});
         }
 
-        function fecharScanner() {
-            if (scannerInstancia) { scannerInstancia.clear(); scannerInstancia = null; }
-            document.getElementById('modalScanner').style.display = 'none';
-        }
-
-        function checarDuplicadoModal() {
-            const s = document.getElementById('novoSSID').value.trim();
-            const p = document.getElementById('novaSenha').value.trim();
-            const existe = window.redesEmMemoria.some(r => r.ssid === s && r.senha === p);
-            document.getElementById('msgDuplicadoModal').style.display = existe ? 'block' : 'none';
-            document.getElementById('btnSalvarModal').disabled = existe;
-        }
-
-        function copy(t) {
-            const el = document.createElement('textarea');
-            el.value = t; document.body.appendChild(el); el.select();
-            document.execCommand('copy'); document.body.removeChild(el);
-            mostrarToast("Copiado!");
-        }
-
-        function filtrar() {
-            const val = document.getElementById('searchInput').value.toLowerCase();
-            document.querySelectorAll('.card').forEach(c => {
-                c.style.display = c.dataset.nomeRede.includes(val) ? 'flex' : 'none';
-            });
-        }
-
-        function exportarTXT() {
-            const txt = document.getElementById('listaInputOculta').value;
-            const blob = new Blob(["\ufeff", txt], {type: 'text/plain;charset=utf-8'});
-            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'backup_wifi.txt'; a.click();
-        }
-
-        async function exportarPDF() {
-            const { jsPDF } = window.jspdf; const doc = new jsPDF();
-            doc.setFont("courier", "normal"); doc.setFontSize(10);
-            let y = 15;
-            window.redesEmMemoria.forEach((red) => {
-                if (y > 280) { doc.addPage(); y = 15; }
-                doc.text(`* ${red.ssid}: ${red.senha}`, 15, y); y += 6;
-            });
-            doc.save("backup_wifi.pdf");
-        }
-
+        function fecharScanner() { if (scannerInstancia) { scannerInstancia.clear(); scannerInstancia = null; } document.getElementById('modalScanner').style.display = 'none'; }
+        function copy(t) { const el = document.createElement('textarea'); el.value = t; document.body.appendChild(el); el.select(); document.execCommand('copy'); document.body.removeChild(el); mostrarToast("Copiado!"); }
+        function filtrar() { const val = document.getElementById('searchInput').value.toLowerCase(); document.querySelectorAll('.card').forEach(c => c.style.display = c.dataset.nomeRede.includes(val) ? 'flex' : 'none'); }
         function abrirModal() { document.getElementById('modalNovaRede').style.display = 'flex'; }
+        
         function fecharModal() { 
             document.getElementById('modalNovaRede').style.display = 'none'; 
             document.getElementById('novoSSID').value = ''; document.getElementById('novaSenha').value = '';
+            document.getElementById('checkLocalizacao').checked = true;
+            document.getElementById('msgDuplicadoModal').style.display = 'none';
+            document.getElementById('btnSalvarModal').style.display = 'flex';
+            document.getElementById('containerCheckLocalizacao').style.display = 'flex';
+            document.getElementById('btnAdicionarGeo').style.display = 'none';
+            document.getElementById('btnAtualizarGeo').style.display = 'none';
+            window.redeDuplicadaAtual = null;
+            document.getElementById('btnSalvarModal').innerText = "Salvar";
         }
-        function abrirModalAvancado() { document.getElementById('modalAvancado').style.display = 'flex'; document.getElementById('statusSyncManual').innerText = ''; }
+
+        function abrirModalAvancado() { document.getElementById('modalAvancado').style.display = 'flex'; }
         function fecharModalAvancado() { document.getElementById('modalAvancado').style.display = 'none'; }
         function mostrarToast(m) { const t = document.getElementById('toast'); t.innerText = m; t.className = 'show'; setTimeout(() => t.className = '', 3000); }
     </script>
@@ -439,6 +539,5 @@
         window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
       }
     </script>
-
 </body>
 </html>
