@@ -3,13 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wi-Fi Manager Pro - Scanner Edition</title>
-<link rel="manifest" href="manifest.json">
-<meta name="theme-color" content="#4F46E5">
+    <title>Wi-Fi Manager Pro - Sync Edition</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#4F46E5">
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/html5-qrcode/2.3.8/html5-qrcode.min.js"></script>
+    
     <style>
         :root {
             --primary: #4F46E5;
@@ -34,20 +35,23 @@
         
         .header-top { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;}
         .botoes-topo { display: flex; gap: 10px; }
-        h1 { margin: 0; font-size: 22px; color: var(--primary); }
+        
+        /* Título clicável para abrir o menu secreto */
+        h1 { margin: 0; font-size: 22px; color: var(--primary); cursor: pointer; user-select: none; }
+        h1:active { transform: scale(0.98); }
 
-        textarea { 
-            width: 100%; height: 100px; padding: 10px; 
-            font-family: monospace; font-size: 13px;
-            border: 1px solid var(--border); border-radius: 8px;
-            box-sizing: border-box; background: #fff;
-        }
-
-        .controles { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+        .controles { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 5px; }
 
         input[type="text"] {
             flex-grow: 1; padding: 10px 15px; font-size: 15px;
             border: 1px solid var(--border); border-radius: 8px;
+        }
+
+        textarea { 
+            width: 100%; height: 120px; padding: 10px; 
+            font-family: monospace; font-size: 13px;
+            border: 1px solid var(--border); border-radius: 8px;
+            box-sizing: border-box; background: #fff;
         }
 
         button { 
@@ -62,10 +66,8 @@
         .btn-scan { background: var(--scanner); }
         .btn-export-txt { background: #6366F1; }
         .btn-export-pdf { background: #A855F7; }
-        .btn-clear { background: var(--danger); }
 
         .info-status { font-size: 13px; font-weight: bold; margin-left: auto; display: flex; gap: 10px; align-items: center; }
-        .tag-alerta { background: var(--warning); color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; }
 
         .content-area { padding: 20px; }
         #output { 
@@ -85,14 +87,15 @@
         
         .qrcode { width: 130px; height: 130px; margin-bottom: 10px; background: #fff; border: 1px solid #eee; display: flex; align-items: center; justify-content: center; }
 
-        .card-actions { display: flex; gap: 5px; width: 100%; margin-top: auto; }
-        .btn-mini { flex: 1; padding: 8px; font-size: 11px; border-radius: 4px; }
+        .card-actions { display: flex; gap: 5px; width: 100%; margin-top: auto; flex-wrap: wrap; }
+        .btn-mini { flex: 1; padding: 8px; font-size: 11px; border-radius: 4px; min-width: 45%; justify-content: center; }
+        .btn-delete { background: var(--danger); color: white; }
 
         .modal-overlay {
             display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
             background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center;
         }
-        .modal-content { background: #fff; padding: 20px; border-radius: 10px; width: 90%; max-width: 350px; display: flex; flex-direction: column; gap: 10px; }
+        .modal-content { background: #fff; padding: 20px; border-radius: 10px; width: 90%; max-width: 400px; display: flex; flex-direction: column; gap: 10px; }
         .aviso-duplicado { color: var(--danger); font-size: 12px; font-weight: bold; display: none; }
 
         #reader { width: 100%; border-radius: 8px; overflow: hidden; }
@@ -103,7 +106,7 @@
         }
         #toast.show { visibility: visible; }
 
-        @media print { .sticky-header, #toast, .modal-overlay, .card-actions { display: none !important; } }
+        @media print { .sticky-header, #toast, .modal-overlay, .card-actions, .btn-delete { display: none !important; } }
     </style>
 </head>
 <body>
@@ -111,232 +114,281 @@
     <div class="sticky-header">
         <div class="container header-content">
             <div class="header-top">
-                <h1>📶 Wi-Fi Manager Pro</h1>
+                <h1 onclick="abrirModalAvancado()" title="Clique para sincronização manual">📶 Wi-Fi Manager Pro</h1>
                 <div class="botoes-topo">
-                    <button class="btn-scan" onclick="abrirScanner()">📷 Escanear QR</button>
-                    <button class="btn-add" onclick="abrirModal()">➕ Nova Rede</button>
+                    <button class="btn-scan" onclick="abrirScanner()">📷 Escanear</button>
+                    <button class="btn-add" onclick="abrirModal()">➕ Nova</button>
                 </div>
             </div>
-            <textarea id="listaInput" placeholder="Cole sua lista aqui..."></textarea>
+
             <div class="controles">
-                <button id="btnSincronizar" onclick="sincronizar(true)">🔄 Sincronizar</button>
-                <button class="btn-export-txt" onclick="exportarTXT()">💾 Exportar TXT</button>
-                <button class="btn-export-pdf" onclick="exportarPDF()">📄 Exportar PDF</button>
-                <button class="btn-clear" onclick="limpar()">🗑️ Limpar</button>
+                <button class="btn-export-txt" onclick="exportarTXT()">💾 TXT</button>
+                <button class="btn-export-pdf" onclick="exportarPDF()">📄 PDF</button>
                 <input type="text" id="searchInput" placeholder="🔍 Pesquisar..." onkeyup="filtrar()">
-                <div id="statusContador" class="info-status"></div>
+                <div id="statusContador" class="info-status">Carregando offline...</div>
             </div>
         </div>
     </div>
 
     <div class="content-area"><div id="output"></div></div>
-    <div id="toast">Copiado!</div>
+    <div id="toast">Aviso!</div>
+
+    <div id="modalAvancado" class="modal-overlay">
+        <div class="modal-content" style="max-width: 500px;">
+            <h3 style="margin:0; color: var(--primary);">⚙️ Modo Desenvolvedor / Sync</h3>
+            <p style="font-size: 12px; color: #666; margin: 0;">Cole sua lista aqui para enviar em lote para a nuvem.</p>
+            <textarea id="listaInputOculta" placeholder="* NomeDaRede: SenhaDaRede..."></textarea>
+            <div style="display:flex; gap:10px; justify-content: space-between; align-items: center;">
+                <span id="statusSyncManual" style="font-size: 12px; font-weight: bold;"></span>
+                <div style="display:flex; gap:10px;">
+                    <button style="background:#666" onclick="fecharModalAvancado()">Fechar</button>
+                    <button class="btn-add" onclick="sincronizarParaNuvem()">☁️ Enviar para Nuvem</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <div id="modalNovaRede" class="modal-overlay">
         <div class="modal-content">
-            <h3 style="margin:0">Nova Rede</h3>
-            <input type="text" id="novoSSID" placeholder="Nome da Rede" oninput="checarDuplicadoModal()">
+            <h3 style="margin:0">Nova Rede Wi-Fi</h3>
+            <input type="text" id="novoSSID" placeholder="Nome da Rede (SSID)" oninput="checarDuplicadoModal()">
             <input type="text" id="novaSenha" placeholder="Senha" oninput="checarDuplicadoModal()">
-            <div id="msgDuplicadoModal" class="aviso-duplicado">⚠️ Esta combinação já existe!</div>
+            <div id="msgDuplicadoModal" class="aviso-duplicado">⚠️ Esta rede já existe!</div>
             <div style="display:flex; gap:10px; justify-content: flex-end;">
                 <button style="background:#666" onclick="fecharModal()">Cancelar</button>
-                <button id="btnSalvarModal" class="btn-add" onclick="salvarNova()">Salvar</button>
+                <button id="btnSalvarModal" class="btn-add" onclick="salvarRedeLocalENuvem()">Salvar</button>
             </div>
         </div>
     </div>
 
     <div id="modalScanner" class="modal-overlay">
         <div class="modal-content">
-            <h3 style="margin:0; text-align:center;">Ler QR Code Wi-Fi</h3>
-            <p style="font-size:12px; color:#666; text-align:center; margin:0;">Aponte a câmera para o código</p>
+            <h3 style="margin:0; text-align:center;">Ler QR Code</h3>
             <div id="reader"></div>
-            <div style="display:flex; gap:10px; justify-content: center;">
-                <button style="background:#EF4444; width:100%" onclick="fecharScanner()">Cancelar / Fechar Câmera</button>
-            </div>
+            <button style="background:#EF4444; width:100%; justify-content: center; margin-top: 10px;" onclick="fecharScanner()">Cancelar</button>
         </div>
     </div>
 
-    <script>
-        const DB_KEY = 'wifi_pro_db_v9';
-        let observer;
-        let scannerInstancia = null;
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
+        import { getDatabase, ref, push, set, onValue, remove, get } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js";
 
+        const firebaseConfig = {
+            apiKey: "AIzaSyCqDSP5SAZdMrHYvyeq9z9lZDp3UTcKu7Y",
+            authDomain: "wifi-manager-pro-44487.firebaseapp.com",
+            projectId: "wifi-manager-pro-44487",
+            storageBucket: "wifi-manager-pro-44487.firebasestorage.app",
+            messagingSenderId: "653885032085",
+            appId: "1:653885032085:web:3a443b20ad2c6c26067d9c",
+            measurementId: "G-NFF0SWFB9P"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+        const DB_KEY = 'wifi_pro_db_v9';
+
+        window.redesEmMemoria = [];
+        let firebaseConectado = false;
+
+        // 1. CARREGAMENTO OFFLINE (Primeira coisa que acontece)
+        function carregarOffline() {
+            const salvo = localStorage.getItem(DB_KEY);
+            if (salvo) {
+                document.getElementById('listaInputOculta').value = salvo;
+                renderizarInterface(obterListaDoTexto(salvo));
+                document.getElementById('statusContador').innerHTML = `<span style="color:gray">📱 Modo Offline Ativo</span>`;
+            }
+        }
+        carregarOffline();
+
+        // 2. SINCRONIZAÇÃO COM FIREBASE (Quando tem internet)
+        const redesRef = ref(db, 'redes_wifi');
+        onValue(redesRef, (snapshot) => {
+            firebaseConectado = true;
+            const dados = snapshot.val();
+            let listaNuvem = [];
+            
+            if (dados) {
+                const chaves = Object.keys(dados);
+                listaNuvem = chaves.map(c => ({ id: c, ssid: dados[c].ssid, senha: dados[c].senha }));
+            }
+
+            // Ordena e atualiza a interface
+            listaNuvem.sort((a, b) => a.ssid.localeCompare(b.ssid));
+            renderizarInterface(listaNuvem);
+            
+            // Atualiza o backup local e a caixa de texto invisível para funcionar offline depois
+            const txtBackup = listaNuvem.map(r => `* ${r.ssid}: ${r.senha}`).join('\n\n');
+            localStorage.setItem(DB_KEY, txtBackup);
+            document.getElementById('listaInputOculta').value = txtBackup;
+            
+            document.getElementById('statusContador').innerHTML = `<span style="color:green">☁️ Nuvem Sincronizada (${listaNuvem.length})</span>`;
+        }, (error) => {
+            console.error("Erro Firebase:", error);
+        });
+
+        // 3. SALVAR NOVA REDE (Local + Nuvem)
+        window.salvarRedeLocalENuvem = function() {
+            const s = document.getElementById('novoSSID').value.trim();
+            const p = document.getElementById('novaSenha').value.trim();
+            if(!s || !p) return;
+
+            // Salva logo no texto/offline para não perder
+            const area = document.getElementById('listaInputOculta');
+            const prefixo = area.value.trim() !== '' ? '\n\n' : '';
+            area.value += `${prefixo}* ${s}: ${p}`;
+            localStorage.setItem(DB_KEY, area.value);
+            
+            // Tenta mandar pra nuvem
+            const novaRedeRef = push(redesRef); 
+            set(novaRedeRef, { ssid: s, senha: p }).catch(e => console.log("Salvo offline. Irá subir quando conectar."));
+            
+            fecharModal();
+            mostrarToast("Rede salva!");
+            if(!firebaseConectado) carregarOffline(); // Atualiza a tela se estiver sem net
+        };
+
+        // 4. EXCLUIR REDE
+        window.excluirRede = function(idFirebase, ssid) {
+            if(confirm(`Excluir a rede "${ssid}" permanentemente?`)) {
+                if(idFirebase && idFirebase !== 'undefined') {
+                    remove(ref(db, 'redes_wifi/' + idFirebase));
+                }
+                
+                // Remove do texto/offline
+                let txt = document.getElementById('listaInputOculta').value;
+                const regex = new RegExp(`\\*\\s*${ssid.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*:.*(\n\n)?`, 'g');
+                txt = txt.replace(regex, '').trim();
+                document.getElementById('listaInputOculta').value = txt;
+                localStorage.setItem(DB_KEY, txt);
+                
+                if(!firebaseConectado) carregarOffline();
+            }
+        }
+
+        // 5. FUNÇÃO DO MENU SECRETO: ENVIAR TEXTO PARA NUVEM
+        window.sincronizarParaNuvem = async function() {
+            const status = document.getElementById('statusSyncManual');
+            status.innerText = "Sincronizando...";
+            status.style.color = "var(--warning)";
+
+            const textoManual = document.getElementById('listaInputOculta').value;
+            localStorage.setItem(DB_KEY, textoManual); // Salva o novo texto como backup
+            const listaManual = obterListaDoTexto(textoManual);
+
+            try {
+                // Pega o que já tem na nuvem para não duplicar
+                const snapshot = await get(redesRef);
+                const dadosNuvem = snapshot.val() || {};
+                const senhasNuvem = Object.values(dadosNuvem).map(r => `${r.ssid}|||${r.senha}`);
+
+                let enviadas = 0;
+                for (let red of listaManual) {
+                    const chave = `${red.ssid}|||${red.senha}`;
+                    if (!senhasNuvem.includes(chave)) {
+                        await set(push(redesRef), { ssid: red.ssid, senha: red.senha });
+                        enviadas++;
+                    }
+                }
+                
+                status.innerText = `Sucesso! ${enviadas} novas redes enviadas.`;
+                status.style.color = "var(--success)";
+                setTimeout(() => fecharModalAvancado(), 2000);
+            } catch(e) {
+                status.innerText = "Erro ao conectar com Firebase.";
+                status.style.color = "var(--danger)";
+            }
+        };
+
+        // Função auxiliar para quebrar o texto da textarea em Array
+        function obterListaDoTexto(txt) {
+            const linhasRaw = txt.split('\n').map(l => l.trim()).filter(l => l.length > 2);
+            const redes = [];
+            linhasRaw.forEach(linha => {
+                const l = linha.replace(/^\*\s*/, '');
+                const p = l.indexOf(':');
+                if (p !== -1) {
+                    let ssid = l.substring(0, p).trim();
+                    let senha = l.substring(p + 1).trim().replace(/:$/, '');
+                    if (ssid && senha) redes.push({ssid: ssid, senha: senha});
+                }
+            });
+            return redes;
+        }
+
+        // Função central para desenhar os cartões
+        function renderizarInterface(lista) {
+            window.redesEmMemoria = lista;
+            const output = document.getElementById('output');
+            output.innerHTML = '';
+            
+            lista.forEach(red => {
+                const div = document.createElement('div');
+                div.className = 'card';
+                div.dataset.nomeRede = red.ssid.toLowerCase();
+                div.innerHTML = `<h3>${red.ssid}</h3><p>${red.senha}</p>
+                    <div class="qrcode" data-ssid="${red.ssid}" data-pass="${red.senha}">Carregando...</div>
+                    <div class="card-actions">
+                        <button class="btn-mini" style="background:#f0f0f0; color:#333" onclick="copy('${red.senha}')">📋 Copiar</button>
+                        <button class="btn-mini btn-delete" onclick="window.excluirRede('${red.id}', '${red.ssid}')">🗑️ Excluir</button>
+                    </div>`;
+                output.appendChild(div);
+                if(window.observer) window.observer.observe(div.querySelector('.qrcode'));
+            });
+        }
+    </script>
+
+    <script>
         document.addEventListener('DOMContentLoaded', () => {
-            observer = new IntersectionObserver((entries) => {
+            window.observer = new IntersectionObserver((entries) => {
                 entries.forEach(entry => {
                     if (entry.isIntersecting) {
                         const container = entry.target;
                         if (!container.dataset.rendered) {
-                            renderQR(container, container.dataset.ssid, container.dataset.pass);
+                            container.innerHTML = "";
+                            new QRCode(container, {
+                                text: unescape(encodeURIComponent(`WIFI:S:${container.dataset.ssid};T:WPA;P:${container.dataset.pass};;`)),
+                                width: 130, height: 130
+                            });
                             container.dataset.rendered = "true";
                         }
                     }
                 });
             }, { rootMargin: '100px' });
-
-            const salvo = localStorage.getItem(DB_KEY);
-            if (salvo) {
-                document.getElementById('listaInput').value = salvo;
-                sincronizar(false);
-            }
         });
 
+        let scannerInstancia = null;
         function abrirScanner() {
             document.getElementById('modalScanner').style.display = 'flex';
-            
-            scannerInstancia = new Html5QrcodeScanner("reader", { 
-                fps: 10, 
-                qrbox: {width: 250, height: 250},
-                rememberLastUsedCamera: true
-            }, false);
-
-            scannerInstancia.render(onScanSuccess, onScanFailure);
-
-            setTimeout(() => {
-                const btnCamera = document.getElementById('html5-qrcode-button-camera-permission');
-                if(btnCamera) btnCamera.innerText = "Permitir Acesso à Câmera";
-                
-                const btnStart = document.getElementById('html5-qrcode-button-camera-start');
-                if(btnStart) btnStart.innerText = "Iniciar Escaneamento";
-                
-                const btnStop = document.getElementById('html5-qrcode-button-camera-stop');
-                if(btnStop) btnStop.innerText = "Parar Câmera";
-                
-                const spanText = document.querySelector('#reader__dashboard_section_csr span');
-                if(spanText) spanText.innerText = "Câmera solicitada";
-            }, 500);
+            scannerInstancia = new Html5QrcodeScanner("reader", { fps: 10, qrbox: {width: 250, height: 250} }, false);
+            scannerInstancia.render((decodedText) => {
+                if (decodedText.toUpperCase().startsWith("WIFI:")) {
+                    let ssid = "", senha = "";
+                    const partes = decodedText.substring(5).split(";");
+                    for (let parte of partes) {
+                        if (parte.toUpperCase().startsWith("S:")) ssid = parte.substring(2);
+                        else if (parte.toUpperCase().startsWith("P:")) senha = parte.substring(2);
+                    }
+                    if (ssid) {
+                        fecharScanner();
+                        abrirModal();
+                        document.getElementById('novoSSID').value = ssid;
+                        document.getElementById('novaSenha').value = senha || "SEM_SENHA";
+                        checarDuplicadoModal();
+                    }
+                }
+            }, (error) => {});
         }
 
         function fecharScanner() {
-            if (scannerInstancia) {
-                scannerInstancia.clear().catch(error => console.error("Falha ao limpar o scanner", error));
-                scannerInstancia = null;
-            }
+            if (scannerInstancia) { scannerInstancia.clear(); scannerInstancia = null; }
             document.getElementById('modalScanner').style.display = 'none';
-        }
-
-        function onScanSuccess(decodedText) {
-            if (decodedText.toUpperCase().startsWith("WIFI:")) {
-                let ssid = "";
-                let senha = "";
-                
-                const partes = decodedText.substring(5).split(";");
-                for (let parte of partes) {
-                    if (parte.toUpperCase().startsWith("S:")) {
-                        ssid = parte.substring(2);
-                    } else if (parte.toUpperCase().startsWith("P:")) {
-                        senha = parte.substring(2);
-                    }
-                }
-
-                if (ssid) {
-                    fecharScanner();
-                    abrirModal();
-                    
-                    document.getElementById('novoSSID').value = ssid;
-                    document.getElementById('novaSenha').value = senha || "SEM_SENHA";
-                    
-                    checarDuplicadoModal();
-                    mostrarToast("Rede detectada com sucesso!");
-                }
-            } else {
-                mostrarToast("QR Code inválido. Não é uma rede Wi-Fi.");
-                fecharScanner();
-            }
-        }
-
-        function onScanFailure(error) {
-        }
-
-        function obterListaLimpa() {
-            const txt = document.getElementById('listaInput').value;
-            const linhasRaw = txt.split('\n').map(l => l.trim()).filter(l => l.length > 2);
-            const redesUnicas = new Map();
-            let duplicados = 0;
-
-            linhasRaw.forEach(linha => {
-                const l = linha.replace(/^\*\s*/, '');
-                const p = l.indexOf(':');
-                if (p !== -1) {
-                    let ssid = l.substring(0, p).trim().replace(/[\u200B-\u200D\uFEFF\u200E\u200F]/g, '');
-                    let pass = l.substring(p + 1).trim().replace(/:$/, '').replace(/[\u200B-\u200D\uFEFF\u200E\u200F]/g, '');
-                    if (ssid && pass) {
-                        const chave = `${ssid}|||${pass}`;
-                        if (!redesUnicas.has(chave)) {
-                            redesUnicas.set(chave, {ssid, pass});
-                        } else {
-                            duplicados++;
-                        }
-                    }
-                }
-            });
-
-            return { 
-                lista: Array.from(redesUnicas.values()).sort((a, b) => a.ssid.localeCompare(b.ssid)),
-                duplicados: duplicados 
-            };
-        }
-
-        function sincronizar(manual) {
-            const area = document.getElementById('listaInput');
-            
-            if (!area.value.trim()) {
-                if (manual) mostrarToast("A caixa de texto está vazia! Nenhuma rede foi apagada.");
-                return;
-            }
-
-            const output = document.getElementById('output');
-            const status = document.getElementById('statusContador');
-            
-            output.innerHTML = '';
-            const { lista, duplicados } = obterListaLimpa();
-            
-            let novoTexto = "";
-            lista.forEach(red => {
-                addCard(red.ssid, red.pass);
-                novoTexto += `* ${red.ssid}: ${red.pass}\n\n`;
-            });
-
-            area.value = novoTexto.trim();
-            localStorage.setItem(DB_KEY, area.value);
-
-            let htmlStatus = `<span style="color:green">✅ ${lista.length}</span>`;
-            if(duplicados > 0) {
-                htmlStatus += `<span class="tag-alerta">⚠️ ${duplicados} duplicatas limpas</span>`;
-                if(manual) mostrarToast(`${duplicados} duplicatas foram limpas!`);
-            } else if (manual) {
-                mostrarToast("Sincronizado com sucesso!");
-            }
-            status.innerHTML = htmlStatus;
-        }
-
-        function addCard(ssid, pass) {
-            const div = document.createElement('div');
-            div.className = 'card';
-            div.innerHTML = `<h3>${ssid}</h3><p>${pass}</p>
-                <div class="qrcode" data-ssid="${ssid}" data-pass="${pass}">Carregando...</div>
-                <div class="card-actions">
-                    <button class="btn-mini" style="background:#f0f0f0; color:#333" onclick="copy('${pass}')">📋 Copiar</button>
-                    <button class="btn-mini" style="background:#10B981; color:#fff" onclick="down(this.parentElement.parentElement, '${ssid}')">⬇️ Baixar Imagem</button>
-                </div>`;
-            document.getElementById('output').appendChild(div);
-            observer.observe(div.querySelector('.qrcode'));
-        }
-
-        function renderQR(container, ssid, pass) {
-            container.innerHTML = "";
-            new QRCode(container, {
-                text: unescape(encodeURIComponent(`WIFI:S:${ssid};T:WPA;P:${pass};;`)),
-                width: 130, height: 130
-            });
         }
 
         function checarDuplicadoModal() {
             const s = document.getElementById('novoSSID').value.trim();
             const p = document.getElementById('novaSenha').value.trim();
-            const { lista } = obterListaLimpa();
-            const existe = lista.some(r => r.ssid === s && r.pass === p);
-            
+            const existe = window.redesEmMemoria.some(r => r.ssid === s && r.senha === p);
             document.getElementById('msgDuplicadoModal').style.display = existe ? 'block' : 'none';
             document.getElementById('btnSalvarModal').disabled = existe;
         }
@@ -348,89 +400,45 @@
             mostrarToast("Copiado!");
         }
 
-        function down(card, ssid) {
-            const canvas = card.querySelector('canvas');
-            const link = document.createElement('a');
-            link.download = `wifi_${ssid.replace(/\s/g, '_')}.png`;
-            link.href = canvas.toDataURL(); link.click();
-        }
-
         function filtrar() {
             const val = document.getElementById('searchInput').value.toLowerCase();
             document.querySelectorAll('.card').forEach(c => {
-                c.style.display = c.innerText.toLowerCase().includes(val) ? 'flex' : 'none';
+                c.style.display = c.dataset.nomeRede.includes(val) ? 'flex' : 'none';
             });
         }
 
         function exportarTXT() {
-            const { lista } = obterListaLimpa();
-            let txt = lista.map(r => `* ${r.ssid}: ${r.pass}`).join('\n\n');
+            const txt = document.getElementById('listaInputOculta').value;
             const blob = new Blob(["\ufeff", txt], {type: 'text/plain;charset=utf-8'});
-            const a = document.createElement('a');
-            a.href = URL.createObjectURL(blob); a.download = 'backup_wifi.txt'; a.click();
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'backup_wifi.txt'; a.click();
         }
 
         async function exportarPDF() {
-            const { jsPDF } = window.jspdf;
-            const doc = new jsPDF();
-            const { lista } = obterListaLimpa();
+            const { jsPDF } = window.jspdf; const doc = new jsPDF();
             doc.setFont("courier", "normal"); doc.setFontSize(10);
             let y = 15;
-            lista.forEach((red) => {
+            window.redesEmMemoria.forEach((red) => {
                 if (y > 280) { doc.addPage(); y = 15; }
-                doc.text(`* ${red.ssid}: ${red.pass}`, 15, y); y += 6;
+                doc.text(`* ${red.ssid}: ${red.senha}`, 15, y); y += 6;
             });
             doc.save("backup_wifi.pdf");
-        }
-
-        function limpar() { 
-            if(confirm("Deseja apagar TUDO (do painel e do armazenamento local)?")) { 
-                localStorage.removeItem(DB_KEY); 
-                document.getElementById('listaInput').value = '';
-                location.reload(); 
-            } 
         }
 
         function abrirModal() { document.getElementById('modalNovaRede').style.display = 'flex'; }
         function fecharModal() { 
             document.getElementById('modalNovaRede').style.display = 'none'; 
-            document.getElementById('novoSSID').value = '';
-            document.getElementById('novaSenha').value = '';
-            document.getElementById('msgDuplicadoModal').style.display = 'none'; 
-            document.getElementById('btnSalvarModal').disabled = false; 
+            document.getElementById('novoSSID').value = ''; document.getElementById('novaSenha').value = '';
         }
-
-        function mostrarToast(m) { 
-            const t = document.getElementById('toast'); 
-            t.innerText = m; 
-            t.className = 'show'; 
-            setTimeout(() => t.className = '', 3000); 
-        }
-
-        function salvarNova() {
-            const s = document.getElementById('novoSSID').value.trim();
-            const p = document.getElementById('novaSenha').value.trim();
-            if(!s || !p) return;
-            
-            const area = document.getElementById('listaInput');
-            const prefixo = area.value.trim() !== '' ? '\n\n' : '';
-            area.value += `${prefixo}* ${s}: ${p}`;
-            
-            fecharModal(); 
-            sincronizar(true);
-        }
+        function abrirModalAvancado() { document.getElementById('modalAvancado').style.display = 'flex'; document.getElementById('statusSyncManual').innerText = ''; }
+        function fecharModalAvancado() { document.getElementById('modalAvancado').style.display = 'none'; }
+        function mostrarToast(m) { const t = document.getElementById('toast'); t.innerText = m; t.className = 'show'; setTimeout(() => t.className = '', 3000); }
     </script>
 
     <script>
       if ('serviceWorker' in navigator) {
-        window.addEventListener('load', () => {
-          navigator.serviceWorker.register('./sw.js')
-            .then(reg => console.log('App pronto para funcionar offline!'))
-            .catch(err => console.log('Falha no motor offline: ', err));
-        });
+        window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js'));
       }
     </script>
 
 </body>
 </html>
-
