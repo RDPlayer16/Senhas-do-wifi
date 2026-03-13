@@ -72,8 +72,6 @@
         .btn-undo:hover { color: #93C5FD; text-decoration: underline; opacity: 1; }
         
         #reader { width: 100%; border-radius: 8px; overflow: hidden; background: #000; }
-
-        /* Arruma a cor do controle de camadas do mapa no modo noturno para ficar visível */
         .leaflet-control-layers { background: var(--modal-bg) !important; color: var(--text-main) !important; }
     </style>
 </head>
@@ -123,7 +121,7 @@
     <div id="modalMapaGlobal" class="modal-overlay">
         <div class="modal-content" style="max-width: 800px; width: 95%; height: 85vh;">
             <h3>🗺️ Todas as suas Redes</h3>
-            <p style="font-size:12px; color:var(--text-muted); margin-top:-10px;">Use o ícone no canto direito do mapa para trocar entre Satélite e Padrão.</p>
+            <p style="font-size:12px; color:var(--text-muted); margin-top:-10px;">Use o ícone no canto direito do mapa para trocar entre Padrão e Satélite.</p>
             <div id="mapa-global-container" style="flex-grow: 1; width: 100%; border-radius: 8px; border: 1px solid var(--border); min-height: 300px;"></div>
             <div style="display:flex; justify-content: flex-end; margin-top:10px;">
                 <button style="background:var(--text-muted)" onclick="fecharMapaGlobal()">Fechar Mapa</button>
@@ -432,8 +430,34 @@
             fecharModalAvancado();
         };
 
-        window.exportarTXT = function() { /* Omitido por clareza */ };
-        window.exportarPDF = function() { /* Omitido por clareza */ };
+        // --- EXPORTAÇÕES (RESTAURADAS COMPLETAMENTE) ---
+        window.exportarTXT = function() {
+            if (window.redesEmMemoria.length === 0) { mostrarToast("Nenhuma rede para exportar."); return; }
+            let texto = "Senhas Wi-Fi Salvas\n\n";
+            window.redesEmMemoria.forEach(r => { texto += `* ${r.ssid}: ${r.senha}\n`; });
+            const blob = new Blob([texto], { type: "text/plain;charset=utf-8" });
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = "Senhas_WiFi_Backup.txt";
+            a.click();
+        };
+
+        window.exportarPDF = function() {
+            if (typeof window.jspdf === 'undefined') { alert("Conecte-se à internet para carregar a biblioteca de PDF."); return; }
+            if (window.redesEmMemoria.length === 0) { mostrarToast("Nenhuma rede para exportar."); return; }
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            doc.setFontSize(16);
+            doc.text("Backup de Senhas Wi-Fi", 10, 10);
+            doc.setFontSize(12);
+            let y = 20;
+            window.redesEmMemoria.forEach((r, i) => {
+                if (y > 280) { doc.addPage(); y = 10; }
+                doc.text(`${i+1}. ${r.ssid} - Senha: ${r.senha}`, 10, y);
+                y += 8;
+            });
+            doc.save("Senhas_WiFi_Backup.pdf");
+        };
 
         window.atualizarGeoRedeExistente = async function() {
             if (!window.redeDuplicadaAtual || !window.redeDuplicadaAtual.id) return;
@@ -465,7 +489,7 @@
                 if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
 
                 mostrarToast("GPS Atualizado!"); fecharModal();
-            } catch (error) { alert("Erro de GPS."); btn.innerText = textoOriginal; btn.disabled = false; }
+            } catch (error) { alert("Erro de GPS. Tente novamente em local aberto."); btn.innerText = textoOriginal; btn.disabled = false; }
         };
 
         window.compartilharRede = async function(ssid, senha) {
@@ -512,24 +536,24 @@
         window.abrirMapaGlobal = function() {
             if (typeof L === 'undefined') { alert("Conecte-se à internet para carregar o mapa."); return; }
             document.getElementById('modalMapaGlobal').style.display = 'flex';
-            if(mapGlobal) { mapGlobal.remove(); }
+            if(mapGlobal) { 
+                mapGlobal.remove(); 
+                document.getElementById('mapa-global-container').innerHTML = '';
+            }
             
             mapGlobal = L.map('mapa-global-container', {
                 center: [-15, -50],
                 zoom: 4
             }); 
             
-            // Cria as duas camadas
             const satLayer = L.tileLayer(TILE_SATELLITE, { maxZoom: 18 });
             const osmLayer = L.tileLayer(TILE_OSM, { maxZoom: 19 });
 
-            // Adiciona Satélite como padrão
-            satLayer.addTo(mapGlobal);
+            osmLayer.addTo(mapGlobal); // Mapa Padrão (Mais Leve) carregado primeiro
 
-            // Adiciona o controle no canto superior direito para trocar o mapa
             L.control.layers({
-                "Satélite (Visual)": satLayer,
-                "Mapa Padrão (Leve)": osmLayer
+                "Mapa Padrão (Leve)": osmLayer,
+                "Satélite (Visual)": satLayer
             }).addTo(mapGlobal);
             
             const redesComGeo = window.redesEmMemoria.filter(r => r.lat && r.lng && r.lat !== 'null');
@@ -548,30 +572,34 @@
         window.fecharMapaGlobal = function() { document.getElementById('modalMapaGlobal').style.display = 'none'; };
 
         window.abrirMapaParaRede = function(id, ssid, lat, lng) {
-            if (typeof L === 'undefined') { alert("O mapa exige conexão com a internet para ser carregado a primeira vez."); return; }
+            if (typeof L === 'undefined') { alert("O mapa exige conexão com a internet para carregar o mapa."); return; }
             document.getElementById('modalMapa').style.display = 'flex';
             document.getElementById('tituloModalMapa').innerText = `📍 ${ssid}`;
             redeEditandoMapa = { id };
-            if(map) { map.remove(); mapMarker = null; }
             
-            const l = lat && lat !== 'null' ? parseFloat(lat) : -15; const g = lng && lng !== 'null' ? parseFloat(lng) : -50;
+            if(map) { 
+                map.remove(); 
+                mapMarker = null; 
+                document.getElementById('mapa-container').innerHTML = '';
+            }
+            
+            const l = (lat && lat !== 'null') ? parseFloat(lat) : -15; 
+            const g = (lng && lng !== 'null') ? parseFloat(lng) : -50;
+            const z = (lat && lat !== 'null') ? 18 : 4; // Zoom corrigido
             
             map = L.map('mapa-container', {
                 center: [l, g],
-                zoom: lat ? 18 : 4
+                zoom: z
             });
 
-            // Cria as duas camadas
             const satLayer = L.tileLayer(TILE_SATELLITE, { maxZoom: 18 });
             const osmLayer = L.tileLayer(TILE_OSM, { maxZoom: 19 });
 
-            // Adiciona Satélite como padrão
-            satLayer.addTo(map);
+            osmLayer.addTo(map); // Padrão Leve carregado primeiro
 
-            // Adiciona o controle de camadas
             L.control.layers({
-                "Satélite (Visual)": satLayer,
-                "Mapa Padrão (Leve)": osmLayer
+                "Mapa Padrão (Leve)": osmLayer,
+                "Satélite (Visual)": satLayer
             }).addTo(map);
             
             if(lat && lat !== 'null') mapMarker = L.marker([l, g]).addTo(map);
@@ -616,7 +644,6 @@
             mostrarToast("Coordenadas salvas!"); fecharMapa();
         };
 
-        // 4. RENDERIZAÇÃO E UTILS
         function renderizarInterface(lista, radar = false) {
             const out = document.getElementById('output');
             out.innerHTML = '';
