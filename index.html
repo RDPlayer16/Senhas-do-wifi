@@ -127,16 +127,65 @@
 
         let map, mapMarker, redeEditandoMapa;
 
-        // 1. CARREGAMENTO GARANTIDO
-        window.addEventListener('DOMContentLoaded', () => {
-            const cacheGeo = localStorage.getItem(DB_GEO_KEY);
-            if (cacheGeo) { 
-                window.redesEmMemoria = JSON.parse(cacheGeo);
-                renderizarInterface(window.redesEmMemoria); 
-            }
-            document.getElementById('statusContador').innerHTML = `<span style="color:gray">📱 Pronto (Local)</span>`;
+        // --- SISTEMA INDEXED DB ---
+        window.initDB = function() {
+            return new Promise((resolve, reject) => {
+                const request = indexedDB.open('WiFiManagerDB_v9', 1);
+                request.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains('redes')) {
+                        db.createObjectStore('redes', { keyPath: 'id' });
+                    }
+                };
+                request.onsuccess = () => resolve(request.result);
+                request.onerror = () => reject(request.error);
+            });
+        };
+
+        window.salvarNoIndexedDB = async function(lista) {
+            try {
+                const db = await window.initDB();
+                const tx = db.transaction('redes', 'readwrite');
+                const store = tx.objectStore('redes');
+                store.clear(); 
+                lista.forEach(item => store.put(item));
+                return new Promise(resolve => tx.oncomplete = resolve);
+            } catch (e) { console.error("Erro ao salvar no IndexedDB", e); }
+        };
+
+        window.lerDoIndexedDB = async function() {
+            try {
+                const db = await window.initDB();
+                const tx = db.transaction('redes', 'readonly');
+                const store = tx.objectStore('redes');
+                const request = store.getAll();
+                return new Promise(resolve => {
+                    request.onsuccess = () => resolve(request.result);
+                });
+            } catch (e) { return []; }
+        };
+
+        // 1. CARREGAMENTO GARANTIDO (Agora lendo do IndexedDB)
+        window.addEventListener('DOMContentLoaded', async () => {
+            try {
+                const dadosLocal = await window.lerDoIndexedDB();
+                if (dadosLocal && dadosLocal.length > 0) {
+                    window.redesEmMemoria = dadosLocal;
+                    renderizarInterface(window.redesEmMemoria);
+                    document.getElementById('statusContador').innerHTML = `<span style="color:gray">📱 Pronto (Offline)</span>`;
+                } else {
+                    // Migra do localStorage se for o primeiro acesso ao IndexedDB
+                    const cacheGeo = localStorage.getItem(DB_GEO_KEY);
+                    if (cacheGeo) { 
+                        window.redesEmMemoria = JSON.parse(cacheGeo);
+                        renderizarInterface(window.redesEmMemoria);
+                        window.salvarNoIndexedDB(window.redesEmMemoria); 
+                        document.getElementById('statusContador').innerHTML = `<span style="color:gray">📱 Pronto (Migrado)</span>`;
+                    }
+                }
+            } catch (e) { console.error("Falha no carregamento local", e); }
             
-            // Intersection Observer para os QR Codes (Prevenção de lentidão)
+            // Intersection Observer para os QR Codes
             if (typeof QRCode !== 'undefined') {
                 window.observer = new IntersectionObserver((entries) => {
                     entries.forEach(entry => {
@@ -150,13 +199,15 @@
             }
         });
 
-        function atualizarBackupLocal(lista) {
-            localStorage.setItem(DB_GEO_KEY, JSON.stringify(lista));
+        // Atualizado para salvar no IndexedDB de forma assíncrona
+        window.atualizarBackupLocal = async function(lista) {
+            await window.salvarNoIndexedDB(lista);
+            
+            // Mantém a versão TXT escondida apenas para visualização
             const txtBackup = lista.map(r => `* ${r.ssid}: ${r.senha}`).join('\n\n');
-            localStorage.setItem(DB_KEY, txtBackup);
             const inputOculta = document.getElementById('listaInputOculta');
             if(inputOculta) inputOculta.value = txtBackup;
-        }
+        };
 
         // 2. FUNÇÕES DE CRUD DA INTERFACE
         window.salvarRedeLocal = async function() {
@@ -175,18 +226,17 @@
                 } catch(e) {}
             }
 
-            // Fallback ID
             let novoId = 'local_' + Date.now() + Math.floor(Math.random() * 1000); 
 
-            // Comunicação com o Firebase (se ele carregou)
             if (typeof window.firebasePush === 'function') {
-                novoId = window.firebasePush(s, p, lat, lng);
+                novoId = window.firebasePush(s, p, lat, lng) || novoId;
             }
 
             const obj = { id: novoId, ssid: s, senha: p, lat, lng };
             window.redesEmMemoria.push(obj);
             window.redesEmMemoria.sort((a, b) => a.ssid.localeCompare(b.ssid));
-            atualizarBackupLocal(window.redesEmMemoria);
+            
+            window.atualizarBackupLocal(window.redesEmMemoria);
             
             if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
             
@@ -196,13 +246,12 @@
 
         window.excluirRede = function(id, ssid) {
             if(confirm(`Excluir permanentemente: ${ssid}?`)) {
-                // Comunicação com o Firebase
                 if (typeof window.firebaseExcluir === 'function' && !id.toString().startsWith('local_')) {
                     window.firebaseExcluir(id);
                 }
                 
                 window.redesEmMemoria = window.redesEmMemoria.filter(r => r.id !== id);
-                atualizarBackupLocal(window.redesEmMemoria);
+                window.atualizarBackupLocal(window.redesEmMemoria);
                 if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
                 mostrarToast("Excluído!");
             }
@@ -231,7 +280,8 @@
                 
                 const index = window.redesEmMemoria.findIndex(r => r.id === rede.id);
                 if(index !== -1) { window.redesEmMemoria[index].lat = novaLat; window.redesEmMemoria[index].lng = novaLng; }
-                atualizarBackupLocal(window.redesEmMemoria);
+                
+                window.atualizarBackupLocal(window.redesEmMemoria);
                 if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
 
                 mostrarToast("GPS Atualizado!"); fecharModal();
@@ -296,7 +346,7 @@
 
             const index = window.redesEmMemoria.findIndex(r => r.id === redeEditandoMapa.id);
             if (index !== -1) { window.redesEmMemoria[index].lat = lat; window.redesEmMemoria[index].lng = lng; }
-            atualizarBackupLocal(window.redesEmMemoria);
+            window.atualizarBackupLocal(window.redesEmMemoria);
             if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
 
             mostrarToast("Coordenadas salvas!");
@@ -415,11 +465,14 @@
                         window.redesEmMemoria = listaNuvem; 
                     }
                     
-                    localStorage.setItem('wifi_pro_db_geo_v1', JSON.stringify(listaNuvem));
+                    // Salva na nuvem E no IndexedDB local ao mesmo tempo
+                    if (window.salvarNoIndexedDB) {
+                        window.salvarNoIndexedDB(listaNuvem);
+                    }
+                    
                     document.getElementById('statusContador').innerHTML = `<span style="color:green">☁️ Sincronizado (${listaNuvem.length})</span>`;
                 });
 
-                // Funcoes que a Interface (Script 1) usa para falar com a nuvem
                 window.firebasePush = function(s, p, lat, lng) {
                     const novaRedeRef = push(redesRef);
                     set(novaRedeRef, { ssid: s, senha: p, lat, lng }).catch(()=>{});
@@ -439,7 +492,6 @@
             }
         }
         
-        // Inicia a tentativa de conexao
         iniciarFirebaseSeguro();
     </script>
 
