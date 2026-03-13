@@ -94,7 +94,7 @@
             <textarea id="listaInputOculta"></textarea>
             <div style="display:flex; gap:10px; justify-content: flex-end;">
                 <button style="background:#666" onclick="fecharModalAvancado()">Fechar</button>
-                </div>
+            </div>
         </div>
     </div>
 
@@ -165,27 +165,28 @@
             } catch (e) { return []; }
         };
 
-        // 1. CARREGAMENTO GARANTIDO (Agora lendo do IndexedDB)
+        // 1. CARREGAMENTO E CONTADOR OFFLINE
         window.addEventListener('DOMContentLoaded', async () => {
             try {
                 const dadosLocal = await window.lerDoIndexedDB();
                 if (dadosLocal && dadosLocal.length > 0) {
                     window.redesEmMemoria = dadosLocal;
                     renderizarInterface(window.redesEmMemoria);
-                    document.getElementById('statusContador').innerHTML = `<span style="color:gray">📱 Pronto (Offline)</span>`;
+                    document.getElementById('statusContador').innerHTML = `<span style="color:gray">📱 Offline (${dadosLocal.length} redes)</span>`;
                 } else {
-                    // Migra do localStorage se for o primeiro acesso ao IndexedDB
                     const cacheGeo = localStorage.getItem(DB_GEO_KEY);
                     if (cacheGeo) { 
                         window.redesEmMemoria = JSON.parse(cacheGeo);
                         renderizarInterface(window.redesEmMemoria);
                         window.salvarNoIndexedDB(window.redesEmMemoria); 
-                        document.getElementById('statusContador').innerHTML = `<span style="color:gray">📱 Pronto (Migrado)</span>`;
+                        document.getElementById('statusContador').innerHTML = `<span style="color:gray">📱 Offline Migrado (${window.redesEmMemoria.length} redes)</span>`;
+                    } else {
+                        document.getElementById('statusContador').innerHTML = `<span style="color:gray">📱 Offline (0 redes)</span>`;
                     }
                 }
             } catch (e) { console.error("Falha no carregamento local", e); }
             
-            // Intersection Observer para os QR Codes
+            // Intersection Observer
             if (typeof QRCode !== 'undefined') {
                 window.observer = new IntersectionObserver((entries) => {
                     entries.forEach(entry => {
@@ -199,17 +200,14 @@
             }
         });
 
-        // Atualizado para salvar no IndexedDB de forma assíncrona
         window.atualizarBackupLocal = async function(lista) {
             await window.salvarNoIndexedDB(lista);
-            
-            // Mantém a versão TXT escondida apenas para visualização
             const txtBackup = lista.map(r => `* ${r.ssid}: ${r.senha}`).join('\n\n');
             const inputOculta = document.getElementById('listaInputOculta');
             if(inputOculta) inputOculta.value = txtBackup;
         };
 
-        // 2. FUNÇÕES DE CRUD DA INTERFACE
+        // 2. FUNÇÕES DE CRUD
         window.salvarRedeLocal = async function() {
             const s = document.getElementById('novoSSID').value.trim();
             const p = document.getElementById('novaSenha').value.trim();
@@ -229,7 +227,10 @@
             let novoId = 'local_' + Date.now() + Math.floor(Math.random() * 1000); 
 
             if (typeof window.firebasePush === 'function') {
-                novoId = window.firebasePush(s, p, lat, lng) || novoId;
+                try {
+                    const key = window.firebasePush(s, p, lat, lng);
+                    if (key) novoId = key;
+                } catch(e) {}
             }
 
             const obj = { id: novoId, ssid: s, senha: p, lat, lng };
@@ -239,6 +240,11 @@
             window.atualizarBackupLocal(window.redesEmMemoria);
             
             if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
+            
+            // Atualiza o contador imediatamente se foi salvo como local (offline)
+            if (novoId.toString().startsWith('local_')) {
+                document.getElementById('statusContador').innerHTML = `<span style="color:gray">📱 Offline (${window.redesEmMemoria.length} redes)</span>`;
+            }
             
             fecharModal(); btnSalvar.innerText = "Salvar"; btnSalvar.disabled = false;
             mostrarToast("Salvo localmente!");
@@ -253,6 +259,11 @@
                 window.redesEmMemoria = window.redesEmMemoria.filter(r => r.id !== id);
                 window.atualizarBackupLocal(window.redesEmMemoria);
                 if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
+                
+                if (!navigator.onLine || typeof window.firebasePush === 'undefined') {
+                    document.getElementById('statusContador').innerHTML = `<span style="color:gray">📱 Offline (${window.redesEmMemoria.length} redes)</span>`;
+                }
+
                 mostrarToast("Excluído!");
             }
         };
@@ -457,6 +468,26 @@
                     if (dados) {
                         listaNuvem = Object.keys(dados).map(c => ({ id: c, ...dados[c] }));
                     }
+
+                    // --- MÁGICA DA SINCRONIZAÇÃO AQUI ---
+                    // Verifica se existem redes criadas offline na memória (ID começa com 'local_')
+                    const redesOffline = window.redesEmMemoria.filter(r => String(r.id).startsWith('local_'));
+                    
+                    if (redesOffline.length > 0) {
+                        // Envia as redes offline para a nuvem
+                        redesOffline.forEach(rede => {
+                            window.firebasePush(rede.ssid, rede.senha, rede.lat, rede.lng);
+                        });
+                        
+                        // Remove as redes temporárias da memória local para não duplicar envios
+                        window.redesEmMemoria = window.redesEmMemoria.filter(r => !String(r.id).startsWith('local_'));
+                        
+                        // O firebasePush vai acionar este onValue novamente em milissegundos, 
+                        // então interrompemos aqui para evitar que a tela apague suas redes antes da hora.
+                        return; 
+                    }
+                    // ------------------------------------
+
                     listaNuvem.sort((a, b) => a.ssid.localeCompare(b.ssid));
                     
                     if (!window.mostrandoApenasProximas) { 
@@ -465,12 +496,11 @@
                         window.redesEmMemoria = listaNuvem; 
                     }
                     
-                    // Salva na nuvem E no IndexedDB local ao mesmo tempo
                     if (window.salvarNoIndexedDB) {
                         window.salvarNoIndexedDB(listaNuvem);
                     }
                     
-                    document.getElementById('statusContador').innerHTML = `<span style="color:green">☁️ Sincronizado (${listaNuvem.length})</span>`;
+                    document.getElementById('statusContador').innerHTML = `<span style="color:green">☁️ Sincronizado (${listaNuvem.length} redes)</span>`;
                 });
 
                 window.firebasePush = function(s, p, lat, lng) {
