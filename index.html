@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wi-Fi Manager Pro - Realtime Radar</title>
+    <title>Wi-Fi Manager Pro - Smart GeoSync</title>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#4F46E5">
 
@@ -232,15 +232,15 @@
 
         window.redesEmMemoria = [];
         window.redeDuplicadaAtual = null; 
-        let mostrandoApenasProximas = false;
+        
+        // Expondo as variáveis do radar para que o botão 'Copiar' alcance
+        window.mostrandoApenasProximas = false;
+        window.radarWatchId = null;
 
         // Variáveis do Mapa
         let map;
         let mapMarker;
         let redeEditandoMapa = null;
-        
-        // Variável do Radar em Tempo Real
-        window.radarWatchId = null;
 
         // 1. CARREGAMENTO INICIAL OFFLINE
         function carregarOffline() {
@@ -267,7 +267,7 @@
             }
 
             listaNuvem.sort((a, b) => a.ssid.localeCompare(b.ssid));
-            if (!mostrandoApenasProximas) { renderizarInterface(listaNuvem); } else { window.redesEmMemoria = listaNuvem; }
+            if (!window.mostrandoApenasProximas) { renderizarInterface(listaNuvem); } else { window.redesEmMemoria = listaNuvem; }
             atualizarBackupLocal(listaNuvem);
             document.getElementById('statusContador').innerHTML = `<span style="color:green">☁️ Sincronizado (${listaNuvem.length})</span>`;
         });
@@ -358,14 +358,14 @@
                 window.redesEmMemoria[index].lng = pos.lng;
             }
             atualizarBackupLocal(window.redesEmMemoria);
-            if (!mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
+            if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
 
             mostrarToast("Local do mapa salvo!");
             fecharMapa();
         };
 
         // ==========================================
-        // RESTANTE DA LÓGICA (SALVAR, EXCLUIR)
+        // LÓGICA DE SALVAR E EXCLUIR
         // ==========================================
 
         window.salvarRedeLocalENuvem = async function() {
@@ -393,7 +393,7 @@
             window.redesEmMemoria.push(novaRedeObj);
             window.redesEmMemoria.sort((a, b) => a.ssid.localeCompare(b.ssid));
             atualizarBackupLocal(window.redesEmMemoria);
-            if (!mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
+            if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
             
             fecharModal(); btnSalvar.innerText = "Salvar"; btnSalvar.disabled = false;
             mostrarToast("Salvo!");
@@ -421,7 +421,7 @@
                 const index = window.redesEmMemoria.findIndex(r => r.id === rede.id);
                 if(index !== -1) { window.redesEmMemoria[index].lat = novaLat; window.redesEmMemoria[index].lng = novaLng; }
                 atualizarBackupLocal(window.redesEmMemoria);
-                if (!mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
+                if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
 
                 mostrarToast("GPS Atualizado!"); fecharModal();
             } catch (error) { alert("Erro de GPS."); btn.innerText = textoOriginal; btn.disabled = false; }
@@ -432,7 +432,7 @@
                 if(idFirebase && idFirebase !== 'undefined') remove(ref(db, 'redes_wifi/' + idFirebase)).catch(e=>console.log("Delete na fila"));
                 window.redesEmMemoria = window.redesEmMemoria.filter(r => r.id !== idFirebase);
                 atualizarBackupLocal(window.redesEmMemoria);
-                if (!mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
+                if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
                 mostrarToast("Rede Excluída!");
             }
         }
@@ -445,24 +445,36 @@
         }
 
         // ==========================================
-        // RADAR EM TEMPO REAL (NOVO)
+        // RADAR EM TEMPO REAL E DESLIGAMENTO AUTOMÁTICO
         // ==========================================
+
+        window.pararRadar = function(veioDoCopy = false) {
+            window.mostrandoApenasProximas = false;
+            
+            if (window.radarWatchId !== null) {
+                navigator.geolocation.clearWatch(window.radarWatchId);
+                window.radarWatchId = null;
+            }
+            
+            const btnRadar = document.getElementById('btnRadar');
+            if(btnRadar) {
+                btnRadar.innerText = "📍 Por Perto"; 
+                btnRadar.style.background = "var(--geo)";
+                btnRadar.disabled = false;
+            }
+            
+            renderizarInterface(window.redesEmMemoria);
+            
+            if (!veioDoCopy) {
+                mostrarToast("Radar desativado. Mostrando todas as redes."); 
+            }
+        };
 
         window.buscarSenhasPorPerto = function() {
             const btnRadar = document.getElementById('btnRadar');
 
-            if (mostrandoApenasProximas) {
-                mostrandoApenasProximas = false;
-                
-                if (window.radarWatchId !== null) {
-                    navigator.geolocation.clearWatch(window.radarWatchId);
-                    window.radarWatchId = null;
-                }
-                
-                renderizarInterface(window.redesEmMemoria);
-                btnRadar.innerText = "📍 Por Perto"; 
-                btnRadar.style.background = "var(--geo)";
-                mostrarToast("Radar desativado. Mostrando todas as redes."); 
+            if (window.mostrandoApenasProximas) {
+                window.pararRadar();
                 return;
             }
 
@@ -482,7 +494,7 @@
 
                 redesProximas.sort((a, b) => a.distancia_atual - b.distancia_atual);
                 
-                mostrandoApenasProximas = true; 
+                window.mostrandoApenasProximas = true; 
                 renderizarInterface(redesProximas, true);
                 
                 btnRadar.innerText = "❌ Parar Radar"; 
@@ -490,13 +502,7 @@
                 btnRadar.disabled = false;
                 
             }, (erro) => {
-                btnRadar.innerText = "📍 Por Perto"; 
-                btnRadar.disabled = false; 
-                
-                if (window.radarWatchId !== null) {
-                    navigator.geolocation.clearWatch(window.radarWatchId);
-                    window.radarWatchId = null;
-                }
+                window.pararRadar();
                 alert("Erro ao rastrear localização. Ative o GPS e permita o acesso.");
             }, { 
                 enableHighAccuracy: true,
@@ -506,10 +512,10 @@
         };
 
         window.sincronizarParaNuvem = async function() {
+            // Sincronização manual avançada mantida igual
             const status = document.getElementById('statusSyncManual');
             status.innerText = "Sincronizando..."; status.style.color = "var(--warning)";
             const textoManual = document.getElementById('listaInputOculta').value;
-            
             const linhasRaw = textoManual.split('\n').map(l => l.trim()).filter(l => l.length > 2);
             const listaManual = [];
             linhasRaw.forEach(linha => {
@@ -519,12 +525,10 @@
                     if (ssid && senha) listaManual.push({ssid: ssid, senha: senha});
                 }
             });
-
             try {
                 const snapshot = await get(redesRef);
                 const dadosNuvem = snapshot.val() || {};
                 const senhasNuvem = Object.values(dadosNuvem).map(r => `${r.ssid}|||${r.senha}`);
-
                 let enviadas = 0;
                 for (let red of listaManual) {
                     const chave = `${red.ssid}|||${red.senha}`;
@@ -538,7 +542,7 @@
             } catch(e) { status.innerText = "Sem internet para envio manual."; status.style.color = "var(--danger)"; }
         };
 
-        function renderizarInterface(lista, modoRadar = false) {
+        window.renderizarInterface = function(lista, modoRadar = false) {
             if (!modoRadar) window.redesEmMemoria = lista; 
             const output = document.getElementById('output'); output.innerHTML = '';
             lista.forEach(red => {
@@ -626,7 +630,25 @@
         }
 
         function fecharScanner() { if (scannerInstancia) { scannerInstancia.clear(); scannerInstancia = null; } document.getElementById('modalScanner').style.display = 'none'; }
-        function copy(t) { const el = document.createElement('textarea'); el.value = t; document.body.appendChild(el); el.select(); document.execCommand('copy'); document.body.removeChild(el); mostrarToast("Copiado!"); }
+        
+        // A NOVA FUNÇÃO DE COPIAR COM PARADA AUTOMÁTICA
+        function copy(t) { 
+            const el = document.createElement('textarea'); 
+            el.value = t; 
+            document.body.appendChild(el); 
+            el.select(); 
+            document.execCommand('copy'); 
+            document.body.removeChild(el); 
+
+            // Desliga o radar se ele estiver rodando
+            if (window.mostrandoApenasProximas) {
+                if(typeof window.pararRadar === 'function') window.pararRadar(true);
+                mostrarToast("Senha copiada! O radar foi desligado.");
+            } else {
+                mostrarToast("Copiado!"); 
+            }
+        }
+
         function filtrar() { const val = document.getElementById('searchInput').value.toLowerCase(); document.querySelectorAll('.card').forEach(c => c.style.display = c.dataset.nomeRede.includes(val) ? 'flex' : 'none'); }
         function abrirModal() { document.getElementById('modalNovaRede').style.display = 'flex'; }
         
