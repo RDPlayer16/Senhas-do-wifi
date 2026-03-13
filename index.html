@@ -15,7 +15,6 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
     <style>
-        /* VARIÁVEIS DE CORES (Suporte a Dark Mode) */
         :root { 
             --primary: #4F46E5; --success: #10B981; --danger: #EF4444; --warning: #F59E0B; --scanner: #F97316; --geo: #0EA5E9; 
             --bg-color: #F3F4F6; --card-bg: #ffffff; --text-main: #111827; --text-muted: #6B7280; --border: #E5E7EB;
@@ -108,8 +107,8 @@
 
     <div id="modalMapa" class="modal-overlay">
         <div class="modal-content" style="max-width: 500px;">
-            <h3 id="tituloModalMapa">📍 Localização da Rede</h3>
-            <button class="btn-geo" id="btnGpsMapa" onclick="usarMeuGPSNoMapa()" style="margin-bottom: 5px; width: 100%; background: #0EA5E9;">🎯 Usar meu GPS atual</button>
+            <h3 id="tituloModalMapa" style="margin-bottom: 5px;">📍 Localização da Rede</h3>
+            <button class="btn-geo" id="btnGpsMapa" onclick="usarMeuGPSNoMapa()" style="margin-bottom: 8px; width: 100%; background: #0EA5E9;">🎯 Usar meu GPS atual</button>
             <div id="mapa-container" style="height: 300px; width: 100%; border-radius: 8px; border: 1px solid var(--border);"></div>
             <div style="display:flex; gap:10px; justify-content: flex-end; margin-top:10px;">
                 <button style="background:var(--text-muted)" onclick="fecharMapa()">Cancelar</button>
@@ -430,7 +429,7 @@
             fecharModalAvancado();
         };
 
-        // --- EXPORTAÇÕES (RESTAURADAS COMPLETAMENTE) ---
+        // --- EXPORTAÇÕES CORRIGIDAS (AGORA FUNCIONANDO) ---
         window.exportarTXT = function() {
             if (window.redesEmMemoria.length === 0) { mostrarToast("Nenhuma rede para exportar."); return; }
             let texto = "Senhas Wi-Fi Salvas\n\n";
@@ -532,24 +531,21 @@
             }, () => window.pararRadar(), {enableHighAccuracy: true});
         };
 
-        // --- MAPAS COM BOTÃO DE CAMADAS (SATÉLITE / PADRÃO) ---
+        // --- MAPAS: INQUEBRÁVEL E COM CAMADAS ---
         window.abrirMapaGlobal = function() {
             if (typeof L === 'undefined') { alert("Conecte-se à internet para carregar o mapa."); return; }
             document.getElementById('modalMapaGlobal').style.display = 'flex';
+            
             if(mapGlobal) { 
                 mapGlobal.remove(); 
-                document.getElementById('mapa-global-container').innerHTML = '';
             }
             
-            mapGlobal = L.map('mapa-global-container', {
-                center: [-15, -50],
-                zoom: 4
-            }); 
+            mapGlobal = L.map('mapa-global-container', { center: [-15, -50], zoom: 4 }); 
             
-            const satLayer = L.tileLayer(TILE_SATELLITE, { maxZoom: 18 });
             const osmLayer = L.tileLayer(TILE_OSM, { maxZoom: 19 });
+            const satLayer = L.tileLayer(TILE_SATELLITE, { maxZoom: 18 });
 
-            osmLayer.addTo(mapGlobal); // Mapa Padrão (Mais Leve) carregado primeiro
+            osmLayer.addTo(mapGlobal); // Abre leve por padrão
 
             L.control.layers({
                 "Mapa Padrão (Leve)": osmLayer,
@@ -572,7 +568,7 @@
         window.fecharMapaGlobal = function() { document.getElementById('modalMapaGlobal').style.display = 'none'; };
 
         window.abrirMapaParaRede = function(id, ssid, lat, lng) {
-            if (typeof L === 'undefined') { alert("O mapa exige conexão com a internet para carregar o mapa."); return; }
+            if (typeof L === 'undefined') { alert("Conecte-se à internet para carregar o mapa."); return; }
             document.getElementById('modalMapa').style.display = 'flex';
             document.getElementById('tituloModalMapa').innerText = `📍 ${ssid}`;
             redeEditandoMapa = { id };
@@ -580,57 +576,91 @@
             if(map) { 
                 map.remove(); 
                 mapMarker = null; 
-                document.getElementById('mapa-container').innerHTML = '';
             }
             
-            const l = (lat && lat !== 'null') ? parseFloat(lat) : -15; 
-            const g = (lng && lng !== 'null') ? parseFloat(lng) : -50;
-            const z = (lat && lat !== 'null') ? 18 : 4; // Zoom corrigido
+            let l = -15; 
+            let g = -50;
+            let z = 4;
             
-            map = L.map('mapa-container', {
-                center: [l, g],
-                zoom: z
-            });
+            if (lat && lat !== 'null' && lat !== 'undefined' && lat !== '') {
+                l = parseFloat(lat);
+                g = parseFloat(lng);
+                z = 18;
+            }
+            
+            map = L.map('mapa-container', { center: [l, g], zoom: z });
 
-            const satLayer = L.tileLayer(TILE_SATELLITE, { maxZoom: 18 });
             const osmLayer = L.tileLayer(TILE_OSM, { maxZoom: 19 });
+            const satLayer = L.tileLayer(TILE_SATELLITE, { maxZoom: 18 });
 
-            osmLayer.addTo(map); // Padrão Leve carregado primeiro
+            osmLayer.addTo(map); // Abre leve por padrão
 
             L.control.layers({
                 "Mapa Padrão (Leve)": osmLayer,
                 "Satélite (Visual)": satLayer
             }).addTo(map);
             
-            if(lat && lat !== 'null') mapMarker = L.marker([l, g]).addTo(map);
+            if(z === 18) {
+                mapMarker = L.marker([l, g]).addTo(map);
+            }
             
             map.on('click', (e) => { 
                 if(mapMarker) mapMarker.setLatLng(e.latlng); 
                 else mapMarker = L.marker(e.latlng).addTo(map); 
             });
-            setTimeout(() => map.invalidateSize(), 400);
+            
+            setTimeout(() => { if(map) map.invalidateSize(); }, 300);
         };
 
-        window.usarMeuGPSNoMapa = async function() {
-            if (!map) return;
+        // --- BOTÃO USAR MEU GPS NO MAPA (DUPLA TENTATIVA) ---
+        window.usarMeuGPSNoMapa = function() {
+            if (!map) {
+                mostrarToast("Erro: O mapa não foi inicializado.");
+                return;
+            }
+            if (!navigator.geolocation) {
+                alert("Seu navegador não suporta GPS.");
+                return;
+            }
+
             const btn = document.getElementById('btnGpsMapa');
             const textoOriginal = btn.innerText;
             btn.innerText = "🎯 Buscando satélites...";
             btn.disabled = true;
 
-            try {
-                const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { 
-                    enableHighAccuracy: true, timeout: 10000, maximumAge: 0 
-                }));
-                const novaLat = pos.coords.latitude; 
-                const novaLng = pos.coords.longitude;
-
-                map.setView([novaLat, novaLng], 18); 
-                if(mapMarker) { mapMarker.setLatLng([novaLat, novaLng]); } 
-                else { mapMarker = L.marker([novaLat, novaLng]).addTo(map); }
-                mostrarToast("GPS Encontrado! Clique em Salvar.");
-            } catch (error) { alert("Não foi possível obter o GPS."); } 
-            finally { btn.innerText = textoOriginal; btn.disabled = false; }
+            // 1ª Tentativa: Alta Precisão (Satélite)
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    const { latitude, longitude } = pos.coords;
+                    map.setView([latitude, longitude], 18); 
+                    if(mapMarker) { mapMarker.setLatLng([latitude, longitude]); } 
+                    else { mapMarker = L.marker([latitude, longitude]).addTo(map); }
+                    mostrarToast("GPS de Alta Precisão encontrado!");
+                    btn.innerText = textoOriginal; 
+                    btn.disabled = false;
+                },
+                (err) => {
+                    // 2ª Tentativa: Baixa Precisão (Operadora/Wi-Fi) se o satélite falhar
+                    navigator.geolocation.getCurrentPosition(
+                        (posFallback) => {
+                            const { latitude, longitude } = posFallback.coords;
+                            map.setView([latitude, longitude], 16); 
+                            if(mapMarker) { mapMarker.setLatLng([latitude, longitude]); } 
+                            else { mapMarker = L.marker([latitude, longitude]).addTo(map); }
+                            mostrarToast("GPS Aproximado encontrado.");
+                            btn.innerText = textoOriginal; 
+                            btn.disabled = false;
+                        },
+                        (errFallback) => {
+                            alert("Não foi possível obter o GPS. Verifique se a localização está ligada e permitida.");
+                            btn.innerText = textoOriginal; 
+                            btn.disabled = false;
+                        },
+                        { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+                    );
+                },
+                { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
+            );
         };
 
         window.salvarLocalizacaoMapa = function() {
@@ -644,6 +674,7 @@
             mostrarToast("Coordenadas salvas!"); fecharMapa();
         };
 
+        // 4. RENDERIZAÇÃO E UTILS
         function renderizarInterface(lista, radar = false) {
             const out = document.getElementById('output');
             out.innerHTML = '';
