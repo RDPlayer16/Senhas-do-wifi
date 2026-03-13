@@ -217,12 +217,18 @@
             } catch (e) { return []; }
         };
 
+        // --- ATUALIZAÇÃO DO CONTADOR: AGORA SOMA TODAS AS AÇÕES OFFLINE ---
         window.atualizarContador = function(modo, totalNuvem = 0) {
             const el = document.getElementById('statusContador');
-            const pendentes = window.redesEmMemoria.filter(r => String(r.id).startsWith('local_')).length;
+            
+            const pendentesCriacao = window.redesEmMemoria.filter(r => String(r.id).startsWith('local_')).length;
+            const pendentesExclusao = JSON.parse(localStorage.getItem('wifi_pro_deletes_v1') || '[]').length;
+            const pendentesUpdate = Object.keys(JSON.parse(localStorage.getItem('wifi_pro_updates_v1') || '{}')).length;
+            
+            const totalPendentes = pendentesCriacao + pendentesExclusao + pendentesUpdate;
             const total = window.redesEmMemoria.length;
             
-            let avisoPendentes = pendentes > 0 ? `<span style="color:#F59E0B; font-weight:bold; background:rgba(245, 158, 11, 0.15); padding:3px 8px; border-radius:6px; margin-left: 5px; border: 1px solid rgba(245, 158, 11, 0.3);">⚠️ ${pendentes} pendente(s)</span>` : '';
+            let avisoPendentes = totalPendentes > 0 ? `<span style="color:#F59E0B; font-weight:bold; background:rgba(245, 158, 11, 0.15); padding:3px 8px; border-radius:6px; margin-left: 5px; border: 1px solid rgba(245, 158, 11, 0.3);">⚠️ ${totalPendentes} pendente(s)</span>` : '';
 
             if (modo === 'offline') {
                 el.innerHTML = `<span style="color:var(--text-muted); font-weight:bold;">📱 Sem Internet (${total} redes)</span> ${avisoPendentes}`;
@@ -233,10 +239,30 @@
             }
         };
 
+        // --- SUPER FILA DE SINCRONIZAÇÃO OFFLINE ---
         window.sincronizarPendentes = async function() {
             if (typeof window.firebasePush !== 'function') return;
+
+            // 1. Processar Exclusões Offline
+            let filaExclusao = JSON.parse(localStorage.getItem('wifi_pro_deletes_v1') || '[]');
+            if (filaExclusao.length > 0) {
+                filaExclusao.forEach(id => {
+                    if(typeof window.firebaseExcluir === 'function') window.firebaseExcluir(id);
+                });
+                localStorage.removeItem('wifi_pro_deletes_v1');
+            }
+
+            // 2. Processar Atualizações de GPS Offline
+            let filaUpdate = JSON.parse(localStorage.getItem('wifi_pro_updates_v1') || '{}');
+            if (Object.keys(filaUpdate).length > 0) {
+                Object.keys(filaUpdate).forEach(id => {
+                    if(typeof window.firebaseAtualizar === 'function') window.firebaseAtualizar(id, filaUpdate[id].lat, filaUpdate[id].lng);
+                });
+                localStorage.removeItem('wifi_pro_updates_v1');
+            }
+
+            // 3. Processar Criação de Novas Redes Offline
             const pendentes = window.redesEmMemoria.filter(r => String(r.id).startsWith('local_'));
-            
             if (pendentes.length > 0) {
                 window.redesEmMemoria = window.redesEmMemoria.filter(r => !String(r.id).startsWith('local_'));
                 await window.atualizarBackupLocal(window.redesEmMemoria);
@@ -298,7 +324,7 @@
             if(inputOculta) inputOculta.value = txtBackup; 
         };
 
-        // --- SISTEMA DE EXCLUSÃO COM "DESFAZER" ---
+        // --- SISTEMA DE EXCLUSÃO COM "DESFAZER" E FILA OFFLINE ---
         window.iniciarExclusao = function(id, ssid) {
             if (window.redePendenteExclusao) window.confirmarExclusaoDefinitiva();
             const rede = window.redesEmMemoria.find(r => r.id === id);
@@ -309,7 +335,7 @@
             window.atualizarBackupLocal(window.redesEmMemoria);
             
             renderizarInterface(window.redesEmMemoria);
-            if (!navigator.onLine || typeof window.firebasePush === 'undefined') window.atualizarContador('offline');
+            window.atualizarContador(navigator.onLine ? 'sincronizando' : 'offline');
 
             const tUndo = document.getElementById('toast-undo');
             document.getElementById('toast-undo-text').innerText = `Rede ${ssid} apagada.`;
@@ -328,7 +354,7 @@
             window.atualizarBackupLocal(window.redesEmMemoria);
             renderizarInterface(window.redesEmMemoria);
             
-            if (!navigator.onLine || typeof window.firebasePush === 'undefined') window.atualizarContador('offline');
+            window.atualizarContador(navigator.onLine ? 'sincronizando' : 'offline');
 
             window.redePendenteExclusao = null;
             document.getElementById('toast-undo').className = '';
@@ -338,11 +364,22 @@
         window.confirmarExclusaoDefinitiva = function() {
             if (!window.redePendenteExclusao) return;
             const id = window.redePendenteExclusao.id;
-            if (navigator.onLine && typeof window.firebaseExcluir === 'function' && !id.toString().startsWith('local_')) {
-                window.firebaseExcluir(id);
+
+            if (navigator.onLine && typeof window.firebaseExcluir === 'function') {
+                // Se estiver online e for uma rede da nuvem, apaga na hora
+                if (!id.toString().startsWith('local_')) window.firebaseExcluir(id);
+            } else {
+                // Se estiver OFFLINE, salva na fila para apagar depois
+                if (!id.toString().startsWith('local_')) {
+                    let filaExclusao = JSON.parse(localStorage.getItem('wifi_pro_deletes_v1') || '[]');
+                    if(!filaExclusao.includes(id)) filaExclusao.push(id);
+                    localStorage.setItem('wifi_pro_deletes_v1', JSON.stringify(filaExclusao));
+                }
             }
+
             window.redePendenteExclusao = null;
             document.getElementById('toast-undo').className = '';
+            window.atualizarContador(navigator.onLine ? 'sincronizando' : 'offline');
         };
 
         window.salvarRedeLocal = async function() {
@@ -378,7 +415,7 @@
             window.atualizarBackupLocal(window.redesEmMemoria);
             if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
             
-            if (!navigator.onLine || typeof window.firebasePush === 'undefined') window.atualizarContador('offline');
+            window.atualizarContador(navigator.onLine ? 'sincronizando' : 'offline');
             
             fecharModal(); btnSalvar.innerText = "Salvar"; btnSalvar.disabled = false;
             mostrarToast("Salvo!");
@@ -419,8 +456,7 @@
                 await window.atualizarBackupLocal(window.redesEmMemoria);
                 if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
                 
-                if (!navigator.onLine || typeof window.firebasePush === 'undefined') window.atualizarContador('offline');
-                else window.atualizarContador('sincronizando');
+                window.atualizarContador(navigator.onLine ? 'sincronizando' : 'offline');
                 
                 let msg = `${adicionados} rede(s) importada(s)!`;
                 if (ignorados > 0) msg += ` (${ignorados} ignoradas por senha curta)`;
@@ -429,7 +465,7 @@
             fecharModalAvancado();
         };
 
-        // --- EXPORTAÇÕES CORRIGIDAS (AGORA FUNCIONANDO) ---
+        // --- EXPORTAÇÕES (RESTAURADAS E COMPLETAS) ---
         window.exportarTXT = function() {
             if (window.redesEmMemoria.length === 0) { mostrarToast("Nenhuma rede para exportar."); return; }
             let texto = "Senhas Wi-Fi Salvas\n\n";
@@ -479,6 +515,11 @@
 
                 if (navigator.onLine && typeof window.firebaseAtualizar === 'function' && !rede.id.toString().startsWith('local_')) {
                     window.firebaseAtualizar(rede.id, novaLat, novaLng);
+                } else if (!rede.id.toString().startsWith('local_')) {
+                    // Fila de Update Offline
+                    let filaUpdate = JSON.parse(localStorage.getItem('wifi_pro_updates_v1') || '{}');
+                    filaUpdate[rede.id] = { lat: novaLat, lng: novaLng };
+                    localStorage.setItem('wifi_pro_updates_v1', JSON.stringify(filaUpdate));
                 }
                 
                 const index = window.redesEmMemoria.findIndex(r => r.id === rede.id);
@@ -487,6 +528,7 @@
                 window.atualizarBackupLocal(window.redesEmMemoria);
                 if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
 
+                window.atualizarContador(navigator.onLine ? 'sincronizando' : 'offline');
                 mostrarToast("GPS Atualizado!"); fecharModal();
             } catch (error) { alert("Erro de GPS. Tente novamente em local aberto."); btn.innerText = textoOriginal; btn.disabled = false; }
         };
@@ -531,13 +573,14 @@
             }, () => window.pararRadar(), {enableHighAccuracy: true});
         };
 
-        // --- MAPAS: INQUEBRÁVEL E COM CAMADAS ---
+        // --- MAPAS: INQUEBRÁVEIS E COM CAMADAS ---
         window.abrirMapaGlobal = function() {
             if (typeof L === 'undefined') { alert("Conecte-se à internet para carregar o mapa."); return; }
             document.getElementById('modalMapaGlobal').style.display = 'flex';
             
             if(mapGlobal) { 
                 mapGlobal.remove(); 
+                document.getElementById('mapa-global-container').innerHTML = '';
             }
             
             mapGlobal = L.map('mapa-global-container', { center: [-15, -50], zoom: 4 }); 
@@ -576,24 +619,19 @@
             if(map) { 
                 map.remove(); 
                 mapMarker = null; 
+                document.getElementById('mapa-container').innerHTML = '';
             }
             
-            let l = -15; 
-            let g = -50;
-            let z = 4;
-            
-            if (lat && lat !== 'null' && lat !== 'undefined' && lat !== '') {
-                l = parseFloat(lat);
-                g = parseFloat(lng);
-                z = 18;
-            }
+            const l = (lat && lat !== 'null' && lat !== 'undefined' && lat !== '') ? parseFloat(lat) : -15; 
+            const g = (lng && lng !== 'null' && lng !== 'undefined' && lng !== '') ? parseFloat(lng) : -50;
+            const z = (lat && lat !== 'null' && lat !== 'undefined' && lat !== '') ? 18 : 4;
             
             map = L.map('mapa-container', { center: [l, g], zoom: z });
 
             const osmLayer = L.tileLayer(TILE_OSM, { maxZoom: 19 });
             const satLayer = L.tileLayer(TILE_SATELLITE, { maxZoom: 18 });
 
-            osmLayer.addTo(map); // Abre leve por padrão
+            osmLayer.addTo(map);
 
             L.control.layers({
                 "Mapa Padrão (Leve)": osmLayer,
@@ -612,7 +650,7 @@
             setTimeout(() => { if(map) map.invalidateSize(); }, 300);
         };
 
-        // --- BOTÃO USAR MEU GPS NO MAPA (DUPLA TENTATIVA) ---
+        // --- BOTÃO DE GPS: DUPLA TENTATIVA ---
         window.usarMeuGPSNoMapa = function() {
             if (!map) {
                 mostrarToast("Erro: O mapa não foi inicializado.");
@@ -628,7 +666,7 @@
             btn.innerText = "🎯 Buscando satélites...";
             btn.disabled = true;
 
-            // 1ª Tentativa: Alta Precisão (Satélite)
+            // Tentativa 1: Alta Precisão
             navigator.geolocation.getCurrentPosition(
                 (pos) => {
                     const { latitude, longitude } = pos.coords;
@@ -640,7 +678,7 @@
                     btn.disabled = false;
                 },
                 (err) => {
-                    // 2ª Tentativa: Baixa Precisão (Operadora/Wi-Fi) se o satélite falhar
+                    // Tentativa 2: Baixa Precisão (Fallback para não travar)
                     navigator.geolocation.getCurrentPosition(
                         (posFallback) => {
                             const { latitude, longitude } = posFallback.coords;
@@ -652,7 +690,7 @@
                             btn.disabled = false;
                         },
                         (errFallback) => {
-                            alert("Não foi possível obter o GPS. Verifique se a localização está ligada e permitida.");
+                            alert("Não foi possível obter o GPS. Ligue a localização do aparelho.");
                             btn.innerText = textoOriginal; 
                             btn.disabled = false;
                         },
@@ -666,11 +704,22 @@
         window.salvarLocalizacaoMapa = function() {
             if(!mapMarker) { mostrarToast("Clique no mapa para marcar o local primeiro!"); return; }
             const { lat, lng } = mapMarker.getLatLng();
-            if (navigator.onLine && typeof window.firebaseAtualizar === 'function' && !redeEditandoMapa.id.toString().startsWith('local_')) { window.firebaseAtualizar(redeEditandoMapa.id, lat, lng); }
+            
+            if (navigator.onLine && typeof window.firebaseAtualizar === 'function' && !redeEditandoMapa.id.toString().startsWith('local_')) { 
+                window.firebaseAtualizar(redeEditandoMapa.id, lat, lng); 
+            } else if (!redeEditandoMapa.id.toString().startsWith('local_')) {
+                // Fila Update Offline
+                let filaUpdate = JSON.parse(localStorage.getItem('wifi_pro_updates_v1') || '{}');
+                filaUpdate[redeEditandoMapa.id] = { lat: lat, lng: lng };
+                localStorage.setItem('wifi_pro_updates_v1', JSON.stringify(filaUpdate));
+            }
+
             const index = window.redesEmMemoria.findIndex(r => r.id === redeEditandoMapa.id);
             if (index !== -1) { window.redesEmMemoria[index].lat = lat; window.redesEmMemoria[index].lng = lng; }
             window.atualizarBackupLocal(window.redesEmMemoria);
             if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
+            
+            window.atualizarContador(navigator.onLine ? 'sincronizando' : 'offline');
             mostrarToast("Coordenadas salvas!"); fecharMapa();
         };
 
@@ -788,7 +837,13 @@
                     update(ref(db, 'redes_wifi/' + id), { lat, lng }).catch(()=>{});
                 };
 
-                window.sincronizarPendentes();
+                // A VERDADEIRA BLINDAGEM DO FIREBASE: Só sincroniza quando a nuvem diz "Estou Online!"
+                const connectedRef = ref(db, '.info/connected');
+                onValue(connectedRef, (snap) => {
+                    if (snap.val() === true) {
+                        window.sincronizarPendentes();
+                    }
+                });
 
                 onValue(redesRef, (snapshot) => {
                     const dados = snapshot.val();
@@ -797,9 +852,26 @@
                         listaNuvem = Object.keys(dados).map(c => ({ id: c, ...dados[c] }));
                     }
 
+                    // FILTRAGEM: Oculta da tela as redes que você apagou offline
+                    const filaExclusao = JSON.parse(localStorage.getItem('wifi_pro_deletes_v1') || '[]');
+                    listaNuvem = listaNuvem.filter(r => !filaExclusao.includes(r.id));
+
+                    // ATUALIZAÇÃO: Mostra na tela o GPS que você alterou offline
+                    const filaUpdate = JSON.parse(localStorage.getItem('wifi_pro_updates_v1') || '{}');
+                    listaNuvem = listaNuvem.map(r => {
+                        if(filaUpdate[r.id]) {
+                            return { ...r, lat: filaUpdate[r.id].lat, lng: filaUpdate[r.id].lng };
+                        }
+                        return r;
+                    });
+
                     if (window.redePendenteExclusao) {
                         listaNuvem = listaNuvem.filter(r => r.id !== window.redePendenteExclusao.id);
                     }
+
+                    // ADIÇÃO: Junta as redes criadas offline que ainda não subiram
+                    const pendentesLocais = window.redesEmMemoria.filter(r => String(r.id).startsWith('local_'));
+                    listaNuvem = [...listaNuvem, ...pendentesLocais];
 
                     listaNuvem.sort((a, b) => a.ssid.localeCompare(b.ssid));
                     
