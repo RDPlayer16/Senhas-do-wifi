@@ -165,50 +165,70 @@
             } catch (e) { return []; }
         };
 
-        // --- FUNÇÃO CENTRAL DO CONTADOR (NOVIDADE) ---
+        // --- CONTADOR E VIGILÂNCIA DE CONEXÃO ---
         window.atualizarContador = function(modo, totalNuvem = 0) {
             const el = document.getElementById('statusContador');
-            
-            // Conta quantas redes estão só no modo local
             const pendentes = window.redesEmMemoria.filter(r => String(r.id).startsWith('local_')).length;
             const total = window.redesEmMemoria.length;
             
-            // Monta o aviso laranjinha se houver redes pendentes
-            let avisoPendentes = pendentes > 0 ? `<span style="color:#F59E0B; font-weight:bold; background:#FEF3C7; padding:2px 6px; border-radius:4px;">⚠️ ${pendentes} pendente${pendentes > 1 ? 's' : ''}</span>` : '';
+            let avisoPendentes = pendentes > 0 ? `<span style="color:#F59E0B; font-weight:bold; background:#FEF3C7; padding:2px 6px; border-radius:4px;">⚠️ ${pendentes} offline</span>` : '';
 
             if (modo === 'offline') {
-                el.innerHTML = `<span style="color:gray; font-weight:bold;">📱 Offline (${total} redes)</span> ${avisoPendentes}`;
-            } else if (modo === 'migrado') {
-                el.innerHTML = `<span style="color:gray; font-weight:bold;">📱 Migrado (${total} redes)</span> ${avisoPendentes}`;
+                el.innerHTML = `<span style="color:gray; font-weight:bold;">📱 Sem Internet</span> ${avisoPendentes}`;
             } else if (modo === 'sincronizando') {
                 el.innerHTML = `<span style="color:orange; font-weight:bold;">⏳ Sincronizando...</span>`;
             } else if (modo === 'sincronizado') {
-                el.innerHTML = `<span style="color:green; font-weight:bold;">☁️ Sincronizado (${totalNuvem} redes)</span>`;
+                el.innerHTML = `<span style="color:green; font-weight:bold;">☁️ Sincronizado (${totalNuvem})</span>`;
             }
         };
 
-        // 1. CARREGAMENTO E INICIALIZAÇÃO
+        window.sincronizarPendentes = function() {
+            if (typeof window.firebasePush !== 'function') return;
+            const pendentes = window.redesEmMemoria.filter(r => String(r.id).startsWith('local_'));
+            
+            if (pendentes.length > 0) {
+                pendentes.forEach(rede => {
+                    window.firebasePush(rede.ssid, rede.senha, rede.lat, rede.lng);
+                });
+                // Remove os provisórios imediatamente para não duplicar na nuvem
+                window.redesEmMemoria = window.redesEmMemoria.filter(r => !String(r.id).startsWith('local_'));
+                window.atualizarBackupLocal(window.redesEmMemoria);
+            }
+        };
+
+        // Eventos que disparam quando a internet cai ou volta na mesma hora
+        window.addEventListener('online', () => {
+            if (typeof window.iniciarFirebaseSeguro === 'function' && typeof window.firebasePush === 'undefined') {
+                window.iniciarFirebaseSeguro();
+            } else {
+                window.sincronizarPendentes();
+                window.atualizarContador('sincronizando');
+            }
+        });
+
+        window.addEventListener('offline', () => {
+            window.atualizarContador('offline');
+        });
+
+        // 1. CARREGAMENTO INICIAL
         window.addEventListener('DOMContentLoaded', async () => {
             try {
                 const dadosLocal = await window.lerDoIndexedDB();
                 if (dadosLocal && dadosLocal.length > 0) {
                     window.redesEmMemoria = dadosLocal;
                     renderizarInterface(window.redesEmMemoria);
-                    window.atualizarContador('offline');
+                    window.atualizarContador(navigator.onLine ? 'sincronizando' : 'offline');
                 } else {
                     const cacheGeo = localStorage.getItem(DB_GEO_KEY);
                     if (cacheGeo) { 
                         window.redesEmMemoria = JSON.parse(cacheGeo);
                         renderizarInterface(window.redesEmMemoria);
                         window.salvarNoIndexedDB(window.redesEmMemoria); 
-                        window.atualizarContador('migrado');
-                    } else {
-                        window.atualizarContador('offline');
+                        window.atualizarContador(navigator.onLine ? 'sincronizando' : 'offline');
                     }
                 }
             } catch (e) { console.error("Falha no carregamento local", e); }
             
-            // Intersection Observer para os QRs
             if (typeof QRCode !== 'undefined') {
                 window.observer = new IntersectionObserver((entries) => {
                     entries.forEach(entry => {
@@ -229,7 +249,7 @@
             if(inputOculta) inputOculta.value = txtBackup;
         };
 
-        // 2. FUNÇÕES DE CRUD
+        // 2. FUNÇÕES DE CRUD (TRAVADAS PARA OFFLINE)
         window.salvarRedeLocal = async function() {
             const s = document.getElementById('novoSSID').value.trim();
             const p = document.getElementById('novaSenha').value.trim();
@@ -248,7 +268,8 @@
 
             let novoId = 'local_' + Date.now() + Math.floor(Math.random() * 1000); 
 
-            if (typeof window.firebasePush === 'function') {
+            // BLOQUEIO: Só tenta mandar pro Firebase se a internet do aparelho estiver LIGADA
+            if (navigator.onLine && typeof window.firebasePush === 'function') {
                 try {
                     const key = window.firebasePush(s, p, lat, lng);
                     if (key) novoId = key;
@@ -260,23 +281,18 @@
             window.redesEmMemoria.sort((a, b) => a.ssid.localeCompare(b.ssid));
             
             window.atualizarBackupLocal(window.redesEmMemoria);
-            
             if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
             
-            // Atualiza visual usando a nova função
-            if (!navigator.onLine || typeof window.firebasePush === 'undefined') {
-                window.atualizarContador('offline');
-            } else {
-                window.atualizarContador('sincronizando');
-            }
+            // Atualiza visual na hora
+            window.atualizarContador(navigator.onLine ? 'sincronizando' : 'offline');
             
             fecharModal(); btnSalvar.innerText = "Salvar"; btnSalvar.disabled = false;
-            mostrarToast("Salvo localmente!");
+            mostrarToast("Salvo!");
         };
 
         window.excluirRede = function(id, ssid) {
             if(confirm(`Excluir permanentemente: ${ssid}?`)) {
-                if (typeof window.firebaseExcluir === 'function' && !id.toString().startsWith('local_')) {
+                if (navigator.onLine && typeof window.firebaseExcluir === 'function' && !id.toString().startsWith('local_')) {
                     window.firebaseExcluir(id);
                 }
                 
@@ -284,13 +300,7 @@
                 window.atualizarBackupLocal(window.redesEmMemoria);
                 if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
                 
-                // Atualiza visual usando a nova função
-                if (!navigator.onLine || typeof window.firebasePush === 'undefined') {
-                    window.atualizarContador('offline');
-                } else {
-                    window.atualizarContador('sincronizando');
-                }
-
+                window.atualizarContador(navigator.onLine ? 'sincronizando' : 'offline');
                 mostrarToast("Excluído!");
             }
         };
@@ -312,7 +322,7 @@
                     if (dist <= 30) { alert(`Distância de ${Math.round(dist)}m. GPS já está preciso.`); fecharModal(); return; }
                 }
 
-                if (typeof window.firebaseAtualizar === 'function' && !rede.id.toString().startsWith('local_')) {
+                if (navigator.onLine && typeof window.firebaseAtualizar === 'function' && !rede.id.toString().startsWith('local_')) {
                     window.firebaseAtualizar(rede.id, novaLat, novaLng);
                 }
                 
@@ -378,7 +388,7 @@
             if(!mapMarker) return;
             const { lat, lng } = mapMarker.getLatLng();
             
-            if (typeof window.firebaseAtualizar === 'function' && !redeEditandoMapa.id.toString().startsWith('local_')) {
+            if (navigator.onLine && typeof window.firebaseAtualizar === 'function' && !redeEditandoMapa.id.toString().startsWith('local_')) {
                 window.firebaseAtualizar(redeEditandoMapa.id, lat, lng);
             }
 
@@ -469,7 +479,7 @@
     </script>
 
     <script type="module">
-        async function iniciarFirebaseSeguro() {
+        window.iniciarFirebaseSeguro = async function() {
             try {
                 const { initializeApp } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js");
                 const { getDatabase, ref, onValue, push, set, remove, update } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
@@ -488,43 +498,7 @@
                 const db = getDatabase(app);
                 const redesRef = ref(db, 'redes_wifi');
 
-                // Escuta a Nuvem e atualiza a tela
-                onValue(redesRef, (snapshot) => {
-                    const dados = snapshot.val();
-                    let listaNuvem = [];
-                    if (dados) {
-                        listaNuvem = Object.keys(dados).map(c => ({ id: c, ...dados[c] }));
-                    }
-
-                    // --- MÁGICA DA SINCRONIZAÇÃO ---
-                    const redesOffline = window.redesEmMemoria.filter(r => String(r.id).startsWith('local_'));
-                    
-                    if (redesOffline.length > 0) {
-                        redesOffline.forEach(rede => {
-                            window.firebasePush(rede.ssid, rede.senha, rede.lat, rede.lng);
-                        });
-                        
-                        window.redesEmMemoria = window.redesEmMemoria.filter(r => !String(r.id).startsWith('local_'));
-                        return; 
-                    }
-                    // -------------------------------
-
-                    listaNuvem.sort((a, b) => a.ssid.localeCompare(b.ssid));
-                    
-                    if (!window.mostrandoApenasProximas) { 
-                        window.renderizarInterface(listaNuvem); 
-                    } else { 
-                        window.redesEmMemoria = listaNuvem; 
-                    }
-                    
-                    if (window.salvarNoIndexedDB) {
-                        window.salvarNoIndexedDB(listaNuvem);
-                    }
-                    
-                    // Atualiza visual como Sincronizado
-                    window.atualizarContador('sincronizado', listaNuvem.length);
-                });
-
+                // Funções conectadas à nuvem
                 window.firebasePush = function(s, p, lat, lng) {
                     const novaRedeRef = push(redesRef);
                     set(novaRedeRef, { ssid: s, senha: p, lat, lng }).catch(()=>{});
@@ -539,12 +513,38 @@
                     update(ref(db, 'redes_wifi/' + id), { lat, lng }).catch(()=>{});
                 };
 
+                // Escuta a Nuvem
+                onValue(redesRef, (snapshot) => {
+                    // MÁGICA DE SINCRONIZAÇÃO: Limpa a fila local ANTES de pegar os dados novos
+                    window.sincronizarPendentes();
+
+                    const dados = snapshot.val();
+                    let listaNuvem = [];
+                    if (dados) {
+                        listaNuvem = Object.keys(dados).map(c => ({ id: c, ...dados[c] }));
+                    }
+
+                    listaNuvem.sort((a, b) => a.ssid.localeCompare(b.ssid));
+                    
+                    if (!window.mostrandoApenasProximas) { 
+                        window.renderizarInterface(listaNuvem); 
+                    } else { 
+                        window.redesEmMemoria = listaNuvem; 
+                    }
+                    
+                    if (window.salvarNoIndexedDB) {
+                        window.salvarNoIndexedDB(listaNuvem);
+                    }
+                    
+                    window.atualizarContador('sincronizado', listaNuvem.length);
+                });
+
             } catch (error) {
-                console.warn("Modo Offline ativado: O Firebase não pôde ser carregado agora.", error);
+                console.warn("Modo Offline ativado no boot: O Firebase não pôde ser carregado.", error);
             }
         }
         
-        iniciarFirebaseSeguro();
+        window.iniciarFirebaseSeguro();
     </script>
 
     <script>
