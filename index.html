@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wi-Fi Manager Pro - PWA Resiliente</title>
+    <title>Wi-Fi Manager Pro - Estável</title>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#4F46E5">
 
@@ -15,36 +15,187 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
     <style>
-        :root { --primary: #4F46E5; --success: #10B981; --danger: #EF4444; --warning: #F59E0B; --scanner: #F97316; --geo: #0EA5E9; --bg-color: #F3F4F6; --border: #E5E7EB; }
-        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-color); margin: 0; padding: 0; }
-        .sticky-header { position: sticky; top: 0; background: rgba(255, 255, 255, 0.98); border-bottom: 1px solid var(--border); padding: 15px 0; z-index: 100; box-shadow: 0 2px 10px rgba(0,0,0,0.05); }
+        :root {
+            --primary: #4F46E5;
+            --success: #10B981;
+            --danger: #EF4444;
+            --warning: #F59E0B;
+            --scanner: #F97316;
+            --geo: #0EA5E9;
+            --bg-color: #F3F4F6;
+            --border: #E5E7EB;
+        }
+
+        body { 
+            font-family: 'Segoe UI', system-ui, sans-serif; 
+            background: var(--bg-color); 
+            margin: 0; 
+            padding: 0; 
+        }
+        
+        .sticky-header { 
+            position: sticky; 
+            top: 0; 
+            background: rgba(255, 255, 255, 0.98); 
+            border-bottom: 1px solid var(--border); 
+            padding: 15px 0; 
+            z-index: 100; 
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05); 
+        }
+
         .container { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
         .header-content { display: flex; flex-direction: column; gap: 12px; }
-        .header-top { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;}
+        .header-top { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
         .botoes-topo { display: flex; gap: 10px; }
+        
         h1 { margin: 0; font-size: 22px; color: var(--primary); cursor: pointer; user-select: none; }
+        
         .controles { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 5px; }
-        input[type="text"] { flex-grow: 1; padding: 10px 15px; font-size: 15px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; }
-        textarea { width: 100%; height: 120px; padding: 10px; font-family: monospace; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; }
-        button { padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer; background: var(--primary); color: white; border: none; border-radius: 6px; display: flex; align-items: center; justify-content: center; gap: 6px; }
+        
+        input[type="text"] { 
+            flex-grow: 1; 
+            padding: 10px 15px; 
+            font-size: 15px; 
+            border: 1px solid var(--border); 
+            border-radius: 8px; 
+            box-sizing: border-box; 
+        }
+        
+        textarea { 
+            width: 100%; 
+            height: 120px; 
+            padding: 10px; 
+            font-family: monospace; 
+            border: 1px solid var(--border); 
+            border-radius: 8px; 
+            box-sizing: border-box; 
+        }
+
+        button { 
+            padding: 10px 18px; 
+            font-size: 14px; 
+            font-weight: 600; 
+            cursor: pointer; 
+            background: var(--primary); 
+            color: white; 
+            border: none; 
+            border-radius: 6px; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+            gap: 6px; 
+        }
         button:disabled { opacity: 0.6; cursor: not-allowed; }
-        .btn-add { background: var(--success); } .btn-scan { background: var(--scanner); } .btn-geo { background: var(--geo); } .btn-delete { background: var(--danger); color: white; }
+        
+        .btn-add { background: var(--success); }
+        .btn-scan { background: var(--scanner); }
+        .btn-geo { background: var(--geo); }
+        .btn-delete { background: var(--danger); color: white; }
+
         .info-status { font-size: 13px; font-weight: bold; margin-left: auto; }
+
         .content-area { padding: 20px; }
-        #output { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px; max-width: 1200px; margin: 0 auto; }
-        .card { background: #fff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); border: 1px solid var(--border); text-align: center; display: flex; flex-direction: column; align-items: center; position: relative; min-height: 250px; }
-        .badge-geo { position: absolute; top: 10px; right: 10px; background: #E0F2FE; color: #0369A1; font-size: 10px; padding: 3px 6px; border-radius: 10px; font-weight: bold; }
+        
+        #output { 
+            display: grid; 
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); 
+            gap: 20px; 
+            max-width: 1200px; 
+            margin: 0 auto; 
+        }
+
+        .card { 
+            background: #fff; 
+            padding: 15px; 
+            border-radius: 10px; 
+            box-shadow: 0 2px 5px rgba(0,0,0,0.05); 
+            border: 1px solid var(--border); 
+            text-align: center; 
+            display: flex; 
+            flex-direction: column; 
+            align-items: center; 
+            position: relative; 
+            min-height: 250px; 
+        }
+        
+        .badge-geo { 
+            position: absolute; 
+            top: 10px; 
+            right: 10px; 
+            background: #E0F2FE; 
+            color: #0369A1; 
+            font-size: 10px; 
+            padding: 3px 6px; 
+            border-radius: 10px; 
+            font-weight: bold; 
+        }
+        
         .card h3 { margin: 5px 0; font-size: 16px; word-break: break-all; width: 85%; }
         .card p { font-size: 13px; color: #666; background: #f8f8f8; padding: 3px 8px; border-radius: 4px; }
-        .qrcode { width: 130px; height: 130px; margin: 10px 0; background: #fff; border: 1px solid #eee; display: flex; align-items: center; justify-content: center; }
-        .card-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; width: 100%; margin-top: auto; }
+        
+        .qrcode { 
+            width: 130px; 
+            height: 130px; 
+            margin: 10px 0; 
+            background: #fff; 
+            border: 1px solid #eee; 
+            display: flex; 
+            align-items: center; 
+            justify-content: center; 
+        }
+        
+        .card-actions { 
+            display: grid; 
+            grid-template-columns: 1fr 1fr; 
+            gap: 5px; 
+            width: 100%; 
+            margin-top: auto; 
+        }
+        
         .btn-mini { padding: 8px; font-size: 11px; border-radius: 4px; width: 100%; box-sizing: border-box; }
         .col-span-2 { grid-column: span 2; }
-        .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center; }
-        .modal-content { background: #fff; padding: 20px; border-radius: 10px; width: 90%; max-width: 400px; display: flex; flex-direction: column; gap: 12px; max-height: 90vh; overflow-y: auto; }
+
+        .modal-overlay { 
+            display: none; 
+            position: fixed; 
+            top: 0; left: 0; 
+            width: 100%; height: 100%; 
+            background: rgba(0,0,0,0.6); 
+            z-index: 1000; 
+            justify-content: center; 
+            align-items: center; 
+        }
+        
+        .modal-content { 
+            background: #fff; 
+            padding: 20px; 
+            border-radius: 10px; 
+            width: 90%; 
+            max-width: 400px; 
+            display: flex; 
+            flex-direction: column; 
+            gap: 12px; 
+            max-height: 90vh; 
+            overflow-y: auto; 
+        }
+        
         .aviso-duplicado { font-size: 12px; font-weight: bold; display: none; text-align: center; padding: 8px; border-radius: 6px; }
-        #toast { visibility: hidden; position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%); background: #1F2937; color: #fff; padding: 12px 24px; border-radius: 8px; z-index: 2000; transition: 0.3s; }
+
+        #toast { 
+            visibility: hidden; 
+            position: fixed; 
+            left: 50%; 
+            bottom: 30px; 
+            transform: translateX(-50%); 
+            background: #1F2937; 
+            color: #fff; 
+            padding: 12px 24px; 
+            border-radius: 8px; 
+            z-index: 2000; 
+            transition: 0.3s; 
+        }
         #toast.show { visibility: visible; }
+        
         #reader { width: 100%; border-radius: 8px; overflow: hidden; }
     </style>
 </head>
@@ -70,20 +221,21 @@
     </div>
 
     <div class="content-area"><div id="output"></div></div>
+    
     <div id="toast">Aviso!</div>
 
     <div id="modalMapa" class="modal-overlay">
         <div class="modal-content" style="max-width: 500px;">
-            <h3 id="tituloModalMapa" style="margin:0;">📍 Localização</h3>
+            <h3 id="tituloModalMapa" style="margin:0;">📍 Localização no Mapa</h3>
             <div style="display: flex; gap: 8px;">
                 <input type="text" id="inputBuscaMapa" placeholder="Rua, Cidade...">
                 <button class="btn-add" onclick="buscarEnderecoMapa()">🔍</button>
-                <button class="btn-geo" onclick="centralizarNoMeuGPS()">🎯</button>
+                <button class="btn-geo" onclick="centralizarNoMeuGPS()" title="Meu Local Atual">🎯</button>
             </div>
             <div id="mapa-container" style="height: 300px; width: 100%; border-radius: 8px; border: 1px solid #ccc;"></div>
             <div style="display:flex; gap:10px; justify-content: flex-end;">
                 <button style="background:#666" onclick="fecharMapa()">Cancelar</button>
-                <button class="btn-add" onclick="salvarLocalizacaoMapa()">Salvar</button>
+                <button class="btn-add" onclick="salvarLocalizacaoMapa()">Salvar Coordenadas</button>
             </div>
         </div>
     </div>
@@ -91,10 +243,10 @@
     <div id="modalAvancado" class="modal-overlay">
         <div class="modal-content">
             <h3>⚙️ Modo Desenvolvedor</h3>
-            <textarea id="listaInputOculta"></textarea>
+            <textarea id="listaInputOculta" placeholder="Lista pura de dados offline"></textarea>
             <div style="display:flex; gap:10px; justify-content: flex-end;">
                 <button style="background:#666" onclick="fecharModalAvancado()">Fechar</button>
-                </div>
+            </div>
         </div>
     </div>
 
@@ -103,9 +255,15 @@
             <h3>Nova Rede Wi-Fi</h3>
             <input type="text" id="novoSSID" placeholder="Nome da Rede (SSID)" oninput="checarDuplicadoModal()">
             <input type="text" id="novaSenha" placeholder="Senha" oninput="checarDuplicadoModal()">
-            <label style="font-size: 13px;" id="containerCheckLocalizacao"><input type="checkbox" id="checkLocalizacao" checked> Usar GPS Automático</label>
+            
+            <label style="font-size: 13px;" id="containerCheckLocalizacao">
+                <input type="checkbox" id="checkLocalizacao" checked> Usar GPS Automático
+            </label>
+            
             <div id="msgDuplicadoModal" class="aviso-duplicado"></div>
+            
             <button id="btnAdicionarGeo" class="btn-geo" style="display:none;" onclick="atualizarGeoRedeExistente()">📍 Adicionar GPS Agora</button>
+            
             <div style="display:flex; gap:10px; justify-content: flex-end; margin-top:10px;">
                 <button style="background:#666" onclick="fecharModal()">Cancelar</button>
                 <button id="btnSalvarModal" class="btn-add" onclick="salvarRedeLocal()">Salvar</button>
@@ -114,7 +272,10 @@
     </div>
 
     <div id="modalScanner" class="modal-overlay">
-        <div class="modal-content"><div id="reader"></div><button style="background:#EF4444; margin-top:10px;" onclick="fecharScanner()">Cancelar</button></div>
+        <div class="modal-content">
+            <div id="reader"></div>
+            <button style="background:#EF4444; margin-top:10px;" onclick="fecharScanner()">Cancelar Câmera</button>
+        </div>
     </div>
 
     <script>
@@ -127,7 +288,7 @@
 
         let map, mapMarker, redeEditandoMapa;
 
-        // 1. CARREGAMENTO GARANTIDO
+        // 1. CARREGAMENTO INICIAL
         window.addEventListener('DOMContentLoaded', () => {
             const cacheGeo = localStorage.getItem(DB_GEO_KEY);
             if (cacheGeo) { 
@@ -136,7 +297,6 @@
             }
             document.getElementById('statusContador').innerHTML = `<span style="color:gray">📱 Pronto (Local)</span>`;
             
-            // Intersection Observer para os QR Codes (Prevenção de lentidão)
             if (typeof QRCode !== 'undefined') {
                 window.observer = new IntersectionObserver((entries) => {
                     entries.forEach(entry => {
@@ -158,7 +318,7 @@
             if(inputOculta) inputOculta.value = txtBackup;
         }
 
-        // 2. FUNÇÕES DE CRUD DA INTERFACE
+        // 2. FUNÇÕES DE CRUD (CRIAR E EXCLUIR)
         window.salvarRedeLocal = async function() {
             const s = document.getElementById('novoSSID').value.trim();
             const p = document.getElementById('novaSenha').value.trim();
@@ -168,35 +328,38 @@
             const btnSalvar = document.getElementById('btnSalvarModal');
 
             if (usarGeo) {
-                btnSalvar.innerText = "📍 GPS..."; btnSalvar.disabled = true;
+                btnSalvar.innerText = "📍 Buscando Satélite..."; 
+                btnSalvar.disabled = true;
                 try {
-                    const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, {timeout: 8000}));
-                    lat = pos.coords.latitude; lng = pos.coords.longitude;
-                } catch(e) {}
+                    const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, {timeout: 6000, enableHighAccuracy: true}));
+                    lat = pos.coords.latitude; 
+                    lng = pos.coords.longitude;
+                } catch(e) {
+                    alert("GPS não encontrado. A rede será salva sem localização.");
+                }
             }
 
-            // Fallback ID
             let novoId = 'local_' + Date.now() + Math.floor(Math.random() * 1000); 
 
-            // Comunicação com o Firebase (se ele carregou)
             if (typeof window.firebasePush === 'function') {
                 novoId = window.firebasePush(s, p, lat, lng);
             }
 
-            const obj = { id: novoId, ssid: s, senha: p, lat, lng };
+            const obj = { id: novoId, ssid: s, senha: p, lat: lat, lng: lng };
             window.redesEmMemoria.push(obj);
             window.redesEmMemoria.sort((a, b) => a.ssid.localeCompare(b.ssid));
             atualizarBackupLocal(window.redesEmMemoria);
             
             if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
             
-            fecharModal(); btnSalvar.innerText = "Salvar"; btnSalvar.disabled = false;
+            fecharModal(); 
+            btnSalvar.innerText = "Salvar"; 
+            btnSalvar.disabled = false;
             mostrarToast("Salvo localmente!");
         };
 
         window.excluirRede = function(id, ssid) {
             if(confirm(`Excluir permanentemente: ${ssid}?`)) {
-                // Comunicação com o Firebase
                 if (typeof window.firebaseExcluir === 'function' && !id.toString().startsWith('local_')) {
                     window.firebaseExcluir(id);
                 }
@@ -204,7 +367,7 @@
                 window.redesEmMemoria = window.redesEmMemoria.filter(r => r.id !== id);
                 atualizarBackupLocal(window.redesEmMemoria);
                 if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
-                mostrarToast("Excluído!");
+                mostrarToast("Excluído com sucesso!");
             }
         };
 
@@ -214,15 +377,21 @@
             const btn = document.getElementById('btnAdicionarGeo');
             const textoOriginal = btn.innerText;
 
-            btn.innerText = "📍 Obtendo GPS..."; btn.disabled = true;
+            btn.innerText = "📍 Buscando Satélite..."; 
+            btn.disabled = true;
 
             try {
-                const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { timeout: 8000 }));
-                const novaLat = pos.coords.latitude; const novaLng = pos.coords.longitude;
+                const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { timeout: 8000, enableHighAccuracy: true }));
+                const novaLat = pos.coords.latitude; 
+                const novaLng = pos.coords.longitude;
 
                 if (rede.lat) {
                     const dist = calcularDistancia(novaLat, novaLng, rede.lat, rede.lng);
-                    if (dist <= 30) { alert(`Distância de ${Math.round(dist)}m. GPS já está preciso.`); fecharModal(); return; }
+                    if (dist <= 30) { 
+                        alert(`Você já está a ${Math.round(dist)}m do local original. A localização já está correta.`); 
+                        fecharModal(); 
+                        return; 
+                    }
                 }
 
                 if (typeof window.firebaseAtualizar === 'function' && !rede.id.toString().startsWith('local_')) {
@@ -230,28 +399,44 @@
                 }
                 
                 const index = window.redesEmMemoria.findIndex(r => r.id === rede.id);
-                if(index !== -1) { window.redesEmMemoria[index].lat = novaLat; window.redesEmMemoria[index].lng = novaLng; }
+                if(index !== -1) { 
+                    window.redesEmMemoria[index].lat = novaLat; 
+                    window.redesEmMemoria[index].lng = novaLng; 
+                }
+                
                 atualizarBackupLocal(window.redesEmMemoria);
                 if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
 
-                mostrarToast("GPS Atualizado!"); fecharModal();
-            } catch (error) { alert("Erro de GPS."); btn.innerText = textoOriginal; btn.disabled = false; }
+                mostrarToast("GPS Atualizado Localmente!"); 
+                fecharModal();
+            } catch (error) { 
+                alert("Falha ao obter GPS offline. Verifique a permissão do celular."); 
+                btn.innerText = textoOriginal; 
+                btn.disabled = false; 
+            }
         };
 
         // 3. RADAR E MAPA
         window.pararRadar = function(veioDoCopy = false) {
             window.mostrandoApenasProximas = false;
-            if (window.radarWatchId) { navigator.geolocation.clearWatch(window.radarWatchId); window.radarWatchId = null; }
-            document.getElementById('btnRadar').innerText = "📍 Por Perto";
-            document.getElementById('btnRadar').style.background = "var(--geo)";
+            if (window.radarWatchId) { 
+                navigator.geolocation.clearWatch(window.radarWatchId); 
+                window.radarWatchId = null; 
+            }
+            const btnRadar = document.getElementById('btnRadar');
+            if(btnRadar) {
+                btnRadar.innerText = "📍 Por Perto";
+                btnRadar.style.background = "var(--geo)";
+            }
             renderizarInterface(window.redesEmMemoria);
-            if(!veioDoCopy) mostrarToast("Radar parado.");
+            if(!veioDoCopy) mostrarToast("Radar de tempo real parado.");
         };
 
         window.buscarSenhasPorPerto = function() {
             if (window.mostrandoApenasProximas) return window.pararRadar();
             const btn = document.getElementById('btnRadar');
-            btn.innerText = "📡 Buscando...";
+            btn.innerText = "📡 Rastreando...";
+            
             window.radarWatchId = navigator.geolocation.watchPosition((pos) => {
                 const { latitude, longitude } = pos.coords;
                 const proximas = window.redesEmMemoria.map(r => {
@@ -261,23 +446,31 @@
                 }).filter(r => r.d <= 150).sort((a,b) => a.d - b.d);
                 
                 window.mostrandoApenasProximas = true;
-                btn.innerText = "❌ Parar"; btn.style.background = "var(--danger)";
+                btn.innerText = "❌ Parar Radar"; 
+                btn.style.background = "var(--danger)";
                 renderizarInterface(proximas, true);
             }, () => window.pararRadar(), {enableHighAccuracy: true});
         };
 
+        // FUNÇÃO DE MAPA VISUAL (COM TRAVA OFFLINE MELHORADA)
         window.abrirMapaParaRede = function(id, ssid, lat, lng) {
-            if (typeof L === 'undefined') { alert("O mapa exige conexão com a internet para ser carregado a primeira vez."); return; }
+            if (typeof L === 'undefined') { 
+                alert("Sem internet! O mapa visual não pode exibir as ruas offline.\nPara adicionar localização agora, vá em 'Nova Rede' e use o botão 'Adicionar GPS Agora'."); 
+                return; 
+            }
             
             document.getElementById('modalMapa').style.display = 'flex';
             document.getElementById('tituloModalMapa').innerText = `📍 ${ssid}`;
             redeEditandoMapa = { id };
+            
             if(map) { map.remove(); mapMarker = null; }
             
             const l = lat && lat !== 'null' ? parseFloat(lat) : -15;
             const g = lng && lng !== 'null' ? parseFloat(lng) : -50;
+            
             map = L.map('mapa-container').setView([l, g], lat ? 16 : 4);
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+            
             if(lat && lat !== 'null') mapMarker = L.marker([l, g]).addTo(map);
             
             map.on('click', (e) => {
@@ -287,7 +480,7 @@
         };
 
         window.salvarLocalizacaoMapa = function() {
-            if(!mapMarker) return;
+            if(!mapMarker) { alert("Você não colocou nenhum pino no mapa!"); return; }
             const { lat, lng } = mapMarker.getLatLng();
             
             if (typeof window.firebaseAtualizar === 'function' && !redeEditandoMapa.id.toString().startsWith('local_')) {
@@ -297,32 +490,60 @@
             const index = window.redesEmMemoria.findIndex(r => r.id === redeEditandoMapa.id);
             if (index !== -1) { window.redesEmMemoria[index].lat = lat; window.redesEmMemoria[index].lng = lng; }
             atualizarBackupLocal(window.redesEmMemoria);
+            
             if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
 
-            mostrarToast("Coordenadas salvas!");
+            mostrarToast("Coordenadas do mapa salvas!");
             fecharMapa();
         };
 
-        // 4. RENDERIZAÇÃO E UTILS
+        window.buscarEnderecoMapa = async function() {
+            const query = document.getElementById('inputBuscaMapa').value;
+            if(!query) return;
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
+                const data = await res.json();
+                if(data && data.length > 0) {
+                    const lat = parseFloat(data[0].lat); const lon = parseFloat(data[0].lon);
+                    map.setView([lat, lon], 16);
+                    if (mapMarker) mapMarker.setLatLng([lat, lon]); else mapMarker = L.marker([lat, lon]).addTo(map);
+                } else { alert("Endereço não encontrado."); }
+            } catch(e) { alert("Sem internet para buscar o endereço em texto."); }
+        };
+
+        window.centralizarNoMeuGPS = function() {
+             navigator.geolocation.getCurrentPosition(pos => {
+                    const lat = pos.coords.latitude; const lon = pos.coords.longitude;
+                    map.setView([lat, lon], 16);
+                    if (mapMarker) mapMarker.setLatLng([lat, lon]); else mapMarker = L.marker([lat, lon]).addTo(map);
+            }, () => { alert("Ative o GPS do celular."); }, {timeout: 5000, enableHighAccuracy: true});
+        };
+
+        // 4. RENDERIZAÇÃO
         function renderizarInterface(lista, radar = false) {
             const out = document.getElementById('output');
             out.innerHTML = '';
             lista.forEach(r => {
                 const div = document.createElement('div');
-                div.className = 'card'; div.dataset.nomeRede = r.ssid.toLowerCase();
+                div.className = 'card'; 
+                div.dataset.nomeRede = r.ssid.toLowerCase();
+                
                 const dist = radar && r.d < 1000 ? `<div class="badge-geo" style="background:#DCFCE7; color:#166534">A ${Math.round(r.d)}m</div>` : (r.lat ? `<div class="badge-geo">📍 Local Salvo</div>` : '');
-                const btnMapa = r.lat ? "🗺️ Editar Local" : "📍 Add Local";
+                const btnMapa = r.lat ? "🗺️ Editar Local" : "📍 Add Visual";
                 const corMapa = r.lat ? "#0EA5E9" : "#6366F1";
 
                 div.innerHTML = `${dist}<h3>${r.ssid}</h3><p>${r.senha}</p>
-                    <div class="qrcode" data-ssid="${r.ssid}" data-pass="${r.senha}">Gerando...</div>
+                    <div class="qrcode" data-ssid="${r.ssid}" data-pass="${r.senha}">QR Code...</div>
                     <div class="card-actions">
                         <button class="btn-mini" style="background:#f0f0f0;color:#333" onclick="copy('${r.senha}')">📋 Copiar</button>
                         <button class="btn-mini btn-delete" onclick="window.excluirRede('${r.id}','${r.ssid}')">🗑️ Excluir</button>
                         <button class="btn-mini col-span-2" style="background:${corMapa}; color:#fff;" onclick="window.abrirMapaParaRede('${r.id}','${r.ssid}','${r.lat}','${r.lng}')">${btnMapa}</button>
                     </div>`;
                 out.appendChild(div);
-                if(window.observer) window.observer.observe(div.querySelector('.qrcode'));
+                
+                if (typeof QRCode !== 'undefined') {
+                    new QRCode(div.querySelector('.qrcode'), { text: `WIFI:S:${r.ssid};T:WPA;P:${r.senha};;`, width: 130, height: 130 });
+                }
             });
         }
 
@@ -333,10 +554,11 @@
             return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
         }
 
+        // 5. UTILITÁRIOS DA TELA
         function copy(t) { 
             const el = document.createElement('textarea'); el.value = t; document.body.appendChild(el); el.select(); document.execCommand('copy'); document.body.removeChild(el); 
-            if(window.mostrandoApenasProximas) { window.pararRadar(true); mostrarToast("Copiado e Radar desligado!"); }
-            else { mostrarToast("Copiado!"); }
+            if(window.mostrandoApenasProximas) { window.pararRadar(true); mostrarToast("Senha copiada! Radar desligado."); }
+            else { mostrarToast("Copiado com sucesso!"); }
         }
 
         function checarDuplicadoModal() {
@@ -344,21 +566,26 @@
             window.redeDuplicadaAtual = window.redesEmMemoria.find(r => r.ssid === s && r.senha === p);
             
             if (window.redeDuplicadaAtual) {
-                document.getElementById('msgDuplicadoModal').style.display = 'block'; document.getElementById('btnSalvarModal').style.display = 'none'; document.getElementById('containerCheckLocalizacao').style.display = 'none';
+                document.getElementById('msgDuplicadoModal').style.display = 'block'; 
+                document.getElementById('btnSalvarModal').style.display = 'none'; 
+                document.getElementById('containerCheckLocalizacao').style.display = 'none';
                 document.getElementById('btnAdicionarGeo').style.display = 'flex';
+                
                 if (!window.redeDuplicadaAtual.lat) {
-                    document.getElementById('msgDuplicadoModal').innerText = "ℹ️ Esta rede já existe sem localização. Atualize o GPS.";
+                    document.getElementById('msgDuplicadoModal').innerText = "ℹ️ Rede já existe sem localização. Adicione GPS agora.";
                 } else {
-                    document.getElementById('msgDuplicadoModal').innerText = "ℹ️ Esta rede já existe com localização.";
+                    document.getElementById('msgDuplicadoModal').innerText = "ℹ️ Rede já existe com localização. Atualize se mudou de lugar.";
                 }
             } else {
-                document.getElementById('msgDuplicadoModal').style.display = 'none'; document.getElementById('btnSalvarModal').style.display = 'flex'; document.getElementById('containerCheckLocalizacao').style.display = 'block';
+                document.getElementById('msgDuplicadoModal').style.display = 'none'; 
+                document.getElementById('btnSalvarModal').style.display = 'flex'; 
+                document.getElementById('containerCheckLocalizacao').style.display = 'block';
                 document.getElementById('btnAdicionarGeo').style.display = 'none';
             }
         }
 
         function abrirScanner() {
-            if (typeof Html5QrcodeScanner === 'undefined') { alert("O Scanner precisa de internet na primeira vez que abre."); return; }
+            if (typeof Html5QrcodeScanner === 'undefined') { alert("O Scanner precisa de internet na primeira vez para baixar a biblioteca da câmera."); return; }
             document.getElementById('modalScanner').style.display = 'flex';
             window.scannerInstancia = new Html5QrcodeScanner("reader", { fps: 10, qrbox: {width: 250, height: 250} }, false);
             window.scannerInstancia.render((text) => {
@@ -400,7 +627,6 @@
                 const db = getDatabase(app);
                 const redesRef = ref(db, 'redes_wifi');
 
-                // Escuta a Nuvem e atualiza a tela
                 onValue(redesRef, (snapshot) => {
                     const dados = snapshot.val();
                     let listaNuvem = [];
@@ -419,7 +645,6 @@
                     document.getElementById('statusContador').innerHTML = `<span style="color:green">☁️ Sincronizado (${listaNuvem.length})</span>`;
                 });
 
-                // Funcoes que a Interface (Script 1) usa para falar com a nuvem
                 window.firebasePush = function(s, p, lat, lng) {
                     const novaRedeRef = push(redesRef);
                     set(novaRedeRef, { ssid: s, senha: p, lat, lng }).catch(()=>{});
@@ -435,651 +660,11 @@
                 };
 
             } catch (error) {
-                console.warn("Modo Offline ativado: O Firebase não pôde ser carregado agora.", error);
+                console.warn("Modo Offline: O Firebase não pôde ser carregado.", error);
             }
         }
         
-        // Inicia a tentativa de conexao
         iniciarFirebaseSeguro();
-    </script>
-
-    <script>
-      if ('serviceWorker' in navigator) { window.addEventListener('load', () => navigator.serviceWorker.register('./sw.js')); }
-    </script>
-</body>
-</html>
-        .container { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
-        .header-content { display: flex; flex-direction: column; gap: 12px; }
-        
-        .header-top { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;}
-        .botoes-topo { display: flex; gap: 10px; }
-        
-        h1 { margin: 0; font-size: 22px; color: var(--primary); cursor: pointer; user-select: none; }
-        h1:active { transform: scale(0.98); }
-
-        .controles { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 5px; }
-
-        input[type="text"] {
-            flex-grow: 1; padding: 10px 15px; font-size: 15px;
-            border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box;
-        }
-
-        textarea { 
-            width: 100%; height: 120px; padding: 10px; 
-            font-family: monospace; font-size: 13px;
-            border: 1px solid var(--border); border-radius: 8px;
-            box-sizing: border-box; background: #fff;
-        }
-
-        button { 
-            padding: 10px 18px; font-size: 14px; font-weight: 600;
-            cursor: pointer; background: var(--primary); color: white; 
-            border: none; border-radius: 6px; transition: 0.2s;
-            display: flex; align-items: center; justify-content: center; gap: 6px;
-        }
-
-        button:hover:not(:disabled) { opacity: 0.9; transform: translateY(-1px); }
-        button:disabled { opacity: 0.6; cursor: not-allowed; }
-        .btn-add { background: var(--success); }
-        .btn-scan { background: var(--scanner); }
-        .btn-export-txt { background: #6366F1; }
-        .btn-export-pdf { background: #A855F7; }
-        .btn-geo { background: var(--geo); }
-
-        .info-status { font-size: 13px; font-weight: bold; margin-left: auto; display: flex; gap: 10px; align-items: center; }
-
-        .content-area { padding: 20px; }
-        #output { 
-            display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); 
-            gap: 20px; max-width: 1200px; margin: 0 auto; 
-        }
-
-        .card { 
-            background: #fff; padding: 15px; border-radius: 10px; 
-            box-shadow: 0 2px 5px rgba(0,0,0,0.05); border: 1px solid var(--border);
-            text-align: center; display: flex; flex-direction: column; align-items: center;
-            min-height: 250px; position: relative;
-        }
-
-        .badge-geo {
-            position: absolute; top: 10px; right: 10px; background: #E0F2FE; color: #0369A1;
-            font-size: 10px; padding: 3px 6px; border-radius: 10px; font-weight: bold;
-        }
-
-        .card h3 { margin: 0 0 5px 0; font-size: 16px; word-break: break-all; width: 80%; }
-        .card p { font-size: 13px; color: #666; background: #f8f8f8; padding: 3px 8px; border-radius: 4px; margin-bottom: 10px; }
-        
-        .qrcode { width: 130px; height: 130px; margin-bottom: 10px; background: #fff; border: 1px solid #eee; display: flex; align-items: center; justify-content: center; }
-
-        .card-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; width: 100%; margin-top: auto; }
-        .btn-mini { padding: 8px; font-size: 11px; border-radius: 4px; width: 100%; box-sizing: border-box; }
-        .btn-delete { background: var(--danger); color: white; }
-        .col-span-2 { grid-column: span 2; }
-
-        .modal-overlay {
-            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0,0,0,0.6); z-index: 1000; justify-content: center; align-items: center;
-        }
-        .modal-content { background: #fff; padding: 20px; border-radius: 10px; width: 90%; max-width: 400px; display: flex; flex-direction: column; gap: 12px; max-height: 90vh; overflow-y: auto;}
-        .aviso-duplicado { font-size: 12px; font-weight: bold; display: none; text-align: center; padding: 8px; border-radius: 6px; }
-
-        #reader { width: 100%; border-radius: 8px; overflow: hidden; }
-
-        #toast {
-            visibility: hidden; position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%);
-            background: #1F2937; color: #fff; padding: 12px 24px; border-radius: 8px; z-index: 2000;
-        }
-        #toast.show { visibility: visible; }
-
-        .checkbox-container { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #444; background: #f9fafb; padding: 8px; border-radius: 6px; border: 1px solid #e5e7eb;}
-
-        @media print { .sticky-header, #toast, .modal-overlay, .card-actions, .btn-delete, .badge-geo { display: none !important; } }
-    </style>
-</head>
-<body>
-
-    <div class="sticky-header">
-        <div class="container header-content">
-            <div class="header-top">
-                <h1 onclick="abrirModalAvancado()" title="Clique para sincronização manual">📶 Wi-Fi Manager Pro</h1>
-                <div class="botoes-topo">
-                    <button class="btn-geo" onclick="buscarSenhasPorPerto()" id="btnRadar">📍 Por Perto</button>
-                    <button class="btn-scan" onclick="abrirScanner()">📷 Escanear</button>
-                    <button class="btn-add" onclick="abrirModal()">➕ Nova</button>
-                </div>
-            </div>
-
-            <div class="controles">
-                <button class="btn-export-txt" onclick="exportarTXT()">💾 TXT</button>
-                <button class="btn-export-pdf" onclick="exportarPDF()">📄 PDF</button>
-                <input type="text" id="searchInput" placeholder="🔍 Pesquisar..." onkeyup="filtrar()">
-                <div id="statusContador" class="info-status">Carregando offline...</div>
-            </div>
-        </div>
-    </div>
-
-    <div class="content-area"><div id="output"></div></div>
-    <div id="toast">Aviso!</div>
-
-    <div id="modalMapa" class="modal-overlay">
-        <div class="modal-content" style="max-width: 500px; padding: 15px;">
-            <h3 id="tituloModalMapa" style="margin:0; color: var(--primary);">📍 Localização</h3>
-            
-            <div style="display: flex; gap: 8px;">
-                <input type="text" id="inputBuscaMapa" placeholder="Rua, Cidade..." style="padding: 8px; font-size: 13px;">
-                <button class="btn-add" style="padding: 8px 12px;" onclick="buscarEnderecoMapa()">🔍</button>
-                <button class="btn-geo" style="padding: 8px 12px;" onclick="centralizarNoMeuGPS()" title="Meu Local Atual">🎯</button>
-            </div>
-            
-            <div id="mapa-container" style="height: 300px; width: 100%; border-radius: 8px; z-index: 1; border: 1px solid #ccc;"></div>
-            <p style="font-size: 11px; color: #666; text-align: center; margin: 0;">Arraste o mapa e toque para posicionar o pino.</p>
-            
-            <div style="display:flex; gap:10px; justify-content: flex-end; margin-top: 5px;">
-                <button style="background:#666" onclick="fecharMapa()">Cancelar</button>
-                <button class="btn-add" onclick="salvarLocalizacaoMapa()">Salvar Coordenadas</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="modalAvancado" class="modal-overlay">
-        <div class="modal-content" style="max-width: 500px;">
-            <h3 style="margin:0; color: var(--primary);">⚙️ Modo Desenvolvedor / Sync</h3>
-            <textarea id="listaInputOculta" placeholder="* NomeDaRede: SenhaDaRede..."></textarea>
-            <div style="display:flex; gap:10px; justify-content: space-between; align-items: center;">
-                <span id="statusSyncManual" style="font-size: 12px; font-weight: bold;"></span>
-                <div style="display:flex; gap:10px;">
-                    <button style="background:#666" onclick="fecharModalAvancado()">Fechar</button>
-                    <button class="btn-add" onclick="sincronizarParaNuvem()">☁️ Enviar para Nuvem</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div id="modalNovaRede" class="modal-overlay">
-        <div class="modal-content">
-            <h3 style="margin:0">Nova Rede Wi-Fi</h3>
-            <input type="text" id="novoSSID" placeholder="Nome da Rede (SSID)" oninput="checarDuplicadoModal()">
-            <input type="text" id="novaSenha" placeholder="Senha" oninput="checarDuplicadoModal()">
-            
-            <label class="checkbox-container" id="containerCheckLocalizacao">
-                <input type="checkbox" id="checkLocalizacao" checked>
-                Salvar localização atual da rede (GPS Automático)
-            </label>
-
-            <div id="msgDuplicadoModal" class="aviso-duplicado"></div>
-            
-            <button id="btnAdicionarGeo" class="btn-geo" style="display:none; width:100%; justify-content:center; margin-top:5px;" onclick="atualizarGeoRedeExistente()">📍 Atualizar GPS Agora</button>
-
-            <div style="display:flex; gap:10px; justify-content: flex-end; margin-top: 10px;">
-                <button style="background:#666" onclick="fecharModal()">Cancelar</button>
-                <button id="btnSalvarModal" class="btn-add" onclick="salvarRedeLocalENuvem()">Salvar</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="modalScanner" class="modal-overlay">
-        <div class="modal-content">
-            <h3 style="margin:0; text-align:center;">Ler QR Code</h3>
-            <div id="reader"></div>
-            <button style="background:#EF4444; width:100%; justify-content: center; margin-top: 10px;" onclick="fecharScanner()">Cancelar</button>
-        </div>
-    </div>
-
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js";
-        import { getDatabase, ref, push, set, onValue, remove, get, update } from "https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js";
-
-        const firebaseConfig = {
-            apiKey: "AIzaSyCqDSP5SAZdMrHYvyeq9z9lZDp3UTcKu7Y",
-            authDomain: "wifi-manager-pro-44487.firebaseapp.com",
-            projectId: "wifi-manager-pro-44487",
-            storageBucket: "wifi-manager-pro-44487.firebasestorage.app",
-            messagingSenderId: "653885032085",
-            appId: "1:653885032085:web:3a443b20ad2c6c26067d9c",
-            measurementId: "G-NFF0SWFB9P"
-        };
-
-        const app = initializeApp(firebaseConfig);
-        const db = getDatabase(app);
-        const DB_KEY = 'wifi_pro_db_v9';
-        const DB_GEO_KEY = 'wifi_pro_db_geo_v1';
-
-        window.redesEmMemoria = [];
-        window.redeDuplicadaAtual = null; 
-        
-        // Expondo as variáveis do radar para que o botão 'Copiar' alcance
-        window.mostrandoApenasProximas = false;
-        window.radarWatchId = null;
-
-        // Variáveis do Mapa
-        let map;
-        let mapMarker;
-        let redeEditandoMapa = null;
-
-        // 1. CARREGAMENTO INICIAL OFFLINE
-        function carregarOffline() {
-            const cacheGeo = localStorage.getItem(DB_GEO_KEY);
-            if (cacheGeo) { 
-                window.redesEmMemoria = JSON.parse(cacheGeo);
-                renderizarInterface(window.redesEmMemoria); 
-            }
-            document.getElementById('statusContador').innerHTML = `<span style="color:gray">📱 Modo Offline</span>`;
-        }
-        carregarOffline();
-
-        // 2. ESCUTA A NUVEM
-        const redesRef = ref(db, 'redes_wifi');
-        onValue(redesRef, (snapshot) => {
-            const dados = snapshot.val();
-            let listaNuvem = [];
-            
-            if (dados) {
-                const chaves = Object.keys(dados);
-                listaNuvem = chaves.map(c => ({ 
-                    id: c, ssid: dados[c].ssid, senha: dados[c].senha, lat: dados[c].lat || null, lng: dados[c].lng || null
-                }));
-            }
-
-            listaNuvem.sort((a, b) => a.ssid.localeCompare(b.ssid));
-            if (!window.mostrandoApenasProximas) { renderizarInterface(listaNuvem); } else { window.redesEmMemoria = listaNuvem; }
-            atualizarBackupLocal(listaNuvem);
-            document.getElementById('statusContador').innerHTML = `<span style="color:green">☁️ Sincronizado (${listaNuvem.length})</span>`;
-        });
-
-        function atualizarBackupLocal(lista) {
-            localStorage.setItem(DB_GEO_KEY, JSON.stringify(lista));
-            const txtBackup = lista.map(r => `* ${r.ssid}: ${r.senha}`).join('\n\n');
-            localStorage.setItem(DB_KEY, txtBackup);
-            const inputOculta = document.getElementById('listaInputOculta');
-            if(inputOculta) inputOculta.value = txtBackup;
-        }
-
-        // ==========================================
-        // LÓGICA DO MAPA MANUAL
-        // ==========================================
-
-        window.abrirMapaParaRede = function(id, ssid, lat, lng) {
-            document.getElementById('modalMapa').style.display = 'flex';
-            document.getElementById('tituloModalMapa').innerText = `📍 ${ssid}`;
-            document.getElementById('inputBuscaMapa').value = '';
-            redeEditandoMapa = { id, ssid };
-
-            if (map) { map.remove(); mapMarker = null; }
-
-            let initialLat = (lat && lat !== 'null') ? parseFloat(lat) : -14.235;
-            let initialLng = (lng && lng !== 'null') ? parseFloat(lng) : -51.925;
-            let zoom = (lat && lat !== 'null') ? 16 : 4;
-
-            map = L.map('mapa-container').setView([initialLat, initialLng], zoom);
-            
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
-
-            if (lat && lat !== 'null') { mapMarker = L.marker([initialLat, initialLng]).addTo(map); }
-
-            setTimeout(() => { map.invalidateSize(); }, 300);
-
-            map.on('click', function(e) {
-                if (mapMarker) { mapMarker.setLatLng(e.latlng); } 
-                else { mapMarker = L.marker(e.latlng).addTo(map); }
-            });
-
-            if (!lat || lat === 'null') {
-                navigator.geolocation.getCurrentPosition(pos => {
-                    const myLat = pos.coords.latitude; const myLng = pos.coords.longitude;
-                    map.setView([myLat, myLng], 16);
-                }, () => {}, {timeout: 3000});
-            }
-        };
-
-        window.fecharMapa = function() {
-            document.getElementById('modalMapa').style.display = 'none';
-            redeEditandoMapa = null;
-        }
-
-        window.buscarEnderecoMapa = async function() {
-            const query = document.getElementById('inputBuscaMapa').value;
-            if(!query) return;
-            try {
-                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}`);
-                const data = await res.json();
-                if(data && data.length > 0) {
-                    const lat = parseFloat(data[0].lat); const lon = parseFloat(data[0].lon);
-                    map.setView([lat, lon], 16);
-                    if (mapMarker) mapMarker.setLatLng([lat, lon]); else mapMarker = L.marker([lat, lon]).addTo(map);
-                } else { alert("Endereço não encontrado."); }
-            } catch(e) { alert("Sem internet para buscar o endereço."); }
-        };
-
-        window.centralizarNoMeuGPS = function() {
-             navigator.geolocation.getCurrentPosition(pos => {
-                    const lat = pos.coords.latitude; const lon = pos.coords.longitude;
-                    map.setView([lat, lon], 16);
-                    if (mapMarker) mapMarker.setLatLng([lat, lon]); else mapMarker = L.marker([lat, lon]).addTo(map);
-            }, () => { alert("Ative a localização do dispositivo."); }, {timeout: 5000, enableHighAccuracy: true});
-        };
-
-        window.salvarLocalizacaoMapa = function() {
-            if (!mapMarker) { alert("Toque no mapa para marcar um local!"); return; }
-            const pos = mapMarker.getLatLng();
-            
-            if (redeEditandoMapa.id && redeEditandoMapa.id !== 'undefined') {
-                update(ref(db, 'redes_wifi/' + redeEditandoMapa.id), { lat: pos.lat, lng: pos.lng }).catch(e => console.log("Update fila"));
-            }
-
-            const index = window.redesEmMemoria.findIndex(r => r.id === redeEditandoMapa.id);
-            if (index !== -1) {
-                window.redesEmMemoria[index].lat = pos.lat;
-                window.redesEmMemoria[index].lng = pos.lng;
-            }
-            atualizarBackupLocal(window.redesEmMemoria);
-            if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
-
-            mostrarToast("Local do mapa salvo!");
-            fecharMapa();
-        };
-
-        // ==========================================
-        // LÓGICA DE SALVAR E EXCLUIR
-        // ==========================================
-
-        window.salvarRedeLocalENuvem = async function() {
-            const s = document.getElementById('novoSSID').value.trim();
-            const p = document.getElementById('novaSenha').value.trim();
-            const usarGeo = document.getElementById('checkLocalizacao').checked;
-            if(!s || !p) return;
-
-            const btnSalvar = document.getElementById('btnSalvarModal');
-            let lat = null, lng = null;
-
-            if (usarGeo) {
-                btnSalvar.innerText = "📍 GPS..."; btnSalvar.disabled = true;
-                try {
-                    const posicao = await new Promise((resolve, reject) => { navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000, enableHighAccuracy: true }); });
-                    lat = posicao.coords.latitude; lng = posicao.coords.longitude;
-                } catch (e) {}
-            }
-
-            const novaRedeRef = push(redesRef); 
-            const novaRedeObj = { id: novaRedeRef.key, ssid: s, senha: p, lat: lat, lng: lng };
-            
-            set(novaRedeRef, { ssid: s, senha: p, lat: lat, lng: lng }).catch(e => console.log("Fila offline"));
-            
-            window.redesEmMemoria.push(novaRedeObj);
-            window.redesEmMemoria.sort((a, b) => a.ssid.localeCompare(b.ssid));
-            atualizarBackupLocal(window.redesEmMemoria);
-            if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
-            
-            fecharModal(); btnSalvar.innerText = "Salvar"; btnSalvar.disabled = false;
-            mostrarToast("Salvo!");
-        };
-
-        window.atualizarGeoRedeExistente = async function() {
-            if (!window.redeDuplicadaAtual || !window.redeDuplicadaAtual.id) return;
-            const rede = window.redeDuplicadaAtual;
-            const btn = document.getElementById('btnAdicionarGeo');
-            const textoOriginal = btn.innerText;
-
-            btn.innerText = "📍 Obtendo GPS..."; btn.disabled = true;
-
-            try {
-                const pos = await new Promise((resolve, reject) => { navigator.geolocation.getCurrentPosition(resolve, reject, { timeout: 10000, enableHighAccuracy: true }); });
-                const novaLat = pos.coords.latitude; const novaLng = pos.coords.longitude;
-
-                if (rede.lat != null) {
-                    const dist = calcularDistancia(novaLat, novaLng, rede.lat, rede.lng);
-                    if (dist <= 30) { alert(`Você está a ${Math.round(dist)} metros do local salvo. Localização já correta.`); fecharModal(); return; }
-                }
-
-                update(ref(db, 'redes_wifi/' + rede.id), { lat: novaLat, lng: novaLng }).catch(e => console.log("Fila offline"));
-                
-                const index = window.redesEmMemoria.findIndex(r => r.id === rede.id);
-                if(index !== -1) { window.redesEmMemoria[index].lat = novaLat; window.redesEmMemoria[index].lng = novaLng; }
-                atualizarBackupLocal(window.redesEmMemoria);
-                if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
-
-                mostrarToast("GPS Atualizado!"); fecharModal();
-            } catch (error) { alert("Erro de GPS."); btn.innerText = textoOriginal; btn.disabled = false; }
-        };
-
-        window.excluirRede = function(idFirebase, ssid) {
-            if(confirm(`Excluir a rede "${ssid}" permanentemente?`)) {
-                if(idFirebase && idFirebase !== 'undefined') remove(ref(db, 'redes_wifi/' + idFirebase)).catch(e=>console.log("Delete na fila"));
-                window.redesEmMemoria = window.redesEmMemoria.filter(r => r.id !== idFirebase);
-                atualizarBackupLocal(window.redesEmMemoria);
-                if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
-                mostrarToast("Rede Excluída!");
-            }
-        }
-
-        function calcularDistancia(lat1, lon1, lat2, lon2) {
-            const R = 6371e3; const φ1 = lat1 * Math.PI/180; const φ2 = lat2 * Math.PI/180;
-            const Δφ = (lat2-lat1) * Math.PI/180; const Δλ = (lon2-lon1) * Math.PI/180;
-            const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ/2) * Math.sin(Δλ/2);
-            return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
-        }
-
-        // ==========================================
-        // RADAR EM TEMPO REAL E DESLIGAMENTO AUTOMÁTICO
-        // ==========================================
-
-        window.pararRadar = function(veioDoCopy = false) {
-            window.mostrandoApenasProximas = false;
-            
-            if (window.radarWatchId !== null) {
-                navigator.geolocation.clearWatch(window.radarWatchId);
-                window.radarWatchId = null;
-            }
-            
-            const btnRadar = document.getElementById('btnRadar');
-            if(btnRadar) {
-                btnRadar.innerText = "📍 Por Perto"; 
-                btnRadar.style.background = "var(--geo)";
-                btnRadar.disabled = false;
-            }
-            
-            renderizarInterface(window.redesEmMemoria);
-            
-            if (!veioDoCopy) {
-                mostrarToast("Radar desativado. Mostrando todas as redes."); 
-            }
-        };
-
-        window.buscarSenhasPorPerto = function() {
-            const btnRadar = document.getElementById('btnRadar');
-
-            if (window.mostrandoApenasProximas) {
-                window.pararRadar();
-                return;
-            }
-
-            btnRadar.innerText = "📡 Rastreando..."; 
-            btnRadar.disabled = true;
-
-            window.radarWatchId = navigator.geolocation.watchPosition((pos) => {
-                const minhaLat = pos.coords.latitude; 
-                const minhaLng = pos.coords.longitude;
-                
-                const redesProximas = window.redesEmMemoria.filter(rede => {
-                    if (!rede.lat || !rede.lng) return false;
-                    const distancia = calcularDistancia(minhaLat, minhaLng, rede.lat, rede.lng);
-                    rede.distancia_atual = distancia; 
-                    return distancia <= 150; 
-                });
-
-                redesProximas.sort((a, b) => a.distancia_atual - b.distancia_atual);
-                
-                window.mostrandoApenasProximas = true; 
-                renderizarInterface(redesProximas, true);
-                
-                btnRadar.innerText = "❌ Parar Radar"; 
-                btnRadar.style.background = "var(--danger)"; 
-                btnRadar.disabled = false;
-                
-            }, (erro) => {
-                window.pararRadar();
-                alert("Erro ao rastrear localização. Ative o GPS e permita o acesso.");
-            }, { 
-                enableHighAccuracy: true,
-                maximumAge: 0,
-                timeout: 5000
-            });
-        };
-
-        window.sincronizarParaNuvem = async function() {
-            // Sincronização manual avançada mantida igual
-            const status = document.getElementById('statusSyncManual');
-            status.innerText = "Sincronizando..."; status.style.color = "var(--warning)";
-            const textoManual = document.getElementById('listaInputOculta').value;
-            const linhasRaw = textoManual.split('\n').map(l => l.trim()).filter(l => l.length > 2);
-            const listaManual = [];
-            linhasRaw.forEach(linha => {
-                const l = linha.replace(/^\*\s*/, ''); const p = l.indexOf(':');
-                if (p !== -1) {
-                    let ssid = l.substring(0, p).trim(); let senha = l.substring(p + 1).trim().replace(/:$/, '');
-                    if (ssid && senha) listaManual.push({ssid: ssid, senha: senha});
-                }
-            });
-            try {
-                const snapshot = await get(redesRef);
-                const dadosNuvem = snapshot.val() || {};
-                const senhasNuvem = Object.values(dadosNuvem).map(r => `${r.ssid}|||${r.senha}`);
-                let enviadas = 0;
-                for (let red of listaManual) {
-                    const chave = `${red.ssid}|||${red.senha}`;
-                    if (!senhasNuvem.includes(chave)) {
-                        await set(push(redesRef), { ssid: red.ssid, senha: red.senha });
-                        enviadas++;
-                    }
-                }
-                status.innerText = `Sucesso! ${enviadas} redes enviadas.`; status.style.color = "var(--success)";
-                setTimeout(() => fecharModalAvancado(), 2000);
-            } catch(e) { status.innerText = "Sem internet para envio manual."; status.style.color = "var(--danger)"; }
-        };
-
-        window.renderizarInterface = function(lista, modoRadar = false) {
-            if (!modoRadar) window.redesEmMemoria = lista; 
-            const output = document.getElementById('output'); output.innerHTML = '';
-            lista.forEach(red => {
-                const div = document.createElement('div'); div.className = 'card'; div.dataset.nomeRede = red.ssid.toLowerCase();
-                let geoTag = "";
-                if (modoRadar && red.distancia_atual !== undefined) geoTag = `<div class="badge-geo" style="background:#DCFCE7; color:#166534">A ${Math.round(red.distancia_atual)}m</div>`;
-                else if (red.lat) geoTag = `<div class="badge-geo">📍 Local Salvo</div>`;
-
-                let txtBotaoMapa = red.lat ? "🗺️ Editar Local" : "📍 Add Local";
-                let corBotaoMapa = red.lat ? "#0EA5E9" : "#6366F1";
-
-                div.innerHTML = `${geoTag}<h3>${red.ssid}</h3><p>${red.senha}</p>
-                    <div class="qrcode" data-ssid="${red.ssid}" data-pass="${red.senha}">Carregando...</div>
-                    <div class="card-actions">
-                        <button class="btn-mini" style="background:#f0f0f0; color:#333" onclick="copy('${red.senha}')">📋 Copiar</button>
-                        <button class="btn-mini btn-delete" onclick="window.excluirRede('${red.id}', '${red.ssid}')">🗑️ Excluir</button>
-                        <button class="btn-mini col-span-2" style="background:${corBotaoMapa}; color:#fff; font-size:12px;" onclick="window.abrirMapaParaRede('${red.id}', '${red.ssid}', '${red.lat}', '${red.lng}')">${txtBotaoMapa}</button>
-                    </div>`;
-                output.appendChild(div);
-                if(window.observer) window.observer.observe(div.querySelector('.qrcode'));
-            });
-        }
-    </script>
-
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            window.observer = new IntersectionObserver((entries) => {
-                entries.forEach(entry => {
-                    if (entry.isIntersecting) {
-                        const container = entry.target;
-                        if (!container.dataset.rendered) {
-                            container.innerHTML = "";
-                            new QRCode(container, { text: unescape(encodeURIComponent(`WIFI:S:${container.dataset.ssid};T:WPA;P:${container.dataset.pass};;`)), width: 130, height: 130 });
-                            container.dataset.rendered = "true";
-                        }
-                    }
-                });
-            }, { rootMargin: '100px' });
-        });
-
-        function checarDuplicadoModal() {
-            const s = document.getElementById('novoSSID').value.trim();
-            const p = document.getElementById('novaSenha').value.trim();
-            window.redeDuplicadaAtual = window.redesEmMemoria.find(r => r.ssid === s && r.senha === p);
-            
-            const msgDuplicado = document.getElementById('msgDuplicadoModal');
-            const btnSalvar = document.getElementById('btnSalvarModal');
-            const containerCheck = document.getElementById('containerCheckLocalizacao');
-            const btnAddGeo = document.getElementById('btnAdicionarGeo');
-
-            if (window.redeDuplicadaAtual) {
-                msgDuplicado.style.display = 'block'; btnSalvar.style.display = 'none'; containerCheck.style.display = 'none';
-                btnAddGeo.style.display = 'flex';
-                if (!window.redeDuplicadaAtual.lat) {
-                    msgDuplicado.innerText = "ℹ️ Esta rede já existe sem localização. Atualize o GPS ou use o botão 'Add Local' no painel.";
-                    msgDuplicado.style.background = "#FEF3C7"; msgDuplicado.style.color = "#92400E";
-                } else {
-                    msgDuplicado.innerText = "ℹ️ Esta rede já existe com localização. Atualize o GPS ou edite pelo Mapa.";
-                    msgDuplicado.style.background = "#E0F2FE"; msgDuplicado.style.color = "#0369A1";
-                }
-            } else {
-                msgDuplicado.style.display = 'none'; btnSalvar.style.display = 'flex'; containerCheck.style.display = 'flex';
-                btnAddGeo.style.display = 'none';
-            }
-        }
-
-        let scannerInstancia = null;
-        function abrirScanner() {
-            document.getElementById('modalScanner').style.display = 'flex';
-            scannerInstancia = new Html5QrcodeScanner("reader", { fps: 10, qrbox: {width: 250, height: 250} }, false);
-            scannerInstancia.render((decodedText) => {
-                if (decodedText.toUpperCase().startsWith("WIFI:")) {
-                    let ssid = "", senha = ""; const partes = decodedText.substring(5).split(";");
-                    for (let parte of partes) {
-                        if (parte.toUpperCase().startsWith("S:")) ssid = parte.substring(2);
-                        else if (parte.toUpperCase().startsWith("P:")) senha = parte.substring(2);
-                    }
-                    if (ssid) {
-                        fecharScanner(); abrirModal();
-                        document.getElementById('novoSSID').value = ssid; document.getElementById('novaSenha').value = senha || "SEM_SENHA";
-                        checarDuplicadoModal();
-                    }
-                }
-            }, () => {});
-        }
-
-        function fecharScanner() { if (scannerInstancia) { scannerInstancia.clear(); scannerInstancia = null; } document.getElementById('modalScanner').style.display = 'none'; }
-        
-        // A NOVA FUNÇÃO DE COPIAR COM PARADA AUTOMÁTICA
-        function copy(t) { 
-            const el = document.createElement('textarea'); 
-            el.value = t; 
-            document.body.appendChild(el); 
-            el.select(); 
-            document.execCommand('copy'); 
-            document.body.removeChild(el); 
-
-            // Desliga o radar se ele estiver rodando
-            if (window.mostrandoApenasProximas) {
-                if(typeof window.pararRadar === 'function') window.pararRadar(true);
-                mostrarToast("Senha copiada! O radar foi desligado.");
-            } else {
-                mostrarToast("Copiado!"); 
-            }
-        }
-
-        function filtrar() { const val = document.getElementById('searchInput').value.toLowerCase(); document.querySelectorAll('.card').forEach(c => c.style.display = c.dataset.nomeRede.includes(val) ? 'flex' : 'none'); }
-        function abrirModal() { document.getElementById('modalNovaRede').style.display = 'flex'; }
-        
-        function fecharModal() { 
-            document.getElementById('modalNovaRede').style.display = 'none'; 
-            document.getElementById('novoSSID').value = ''; document.getElementById('novaSenha').value = '';
-            document.getElementById('checkLocalizacao').checked = true;
-            document.getElementById('msgDuplicadoModal').style.display = 'none';
-            document.getElementById('btnSalvarModal').style.display = 'flex';
-            document.getElementById('containerCheckLocalizacao').style.display = 'flex';
-            document.getElementById('btnAdicionarGeo').style.display = 'none';
-            window.redeDuplicadaAtual = null;
-        }
-
-        function abrirModalAvancado() { document.getElementById('modalAvancado').style.display = 'flex'; }
-        function fecharModalAvancado() { document.getElementById('modalAvancado').style.display = 'none'; }
-        function mostrarToast(m) { const t = document.getElementById('toast'); t.innerText = m; t.className = 'show'; setTimeout(() => t.className = '', 3000); }
     </script>
 
     <script>
