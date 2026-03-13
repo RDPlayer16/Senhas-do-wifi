@@ -165,44 +165,48 @@
             } catch (e) { return []; }
         };
 
-        // --- CONTADOR E VIGILÂNCIA DE CONEXÃO ---
+        // --- CONTADOR SEGURO ---
         window.atualizarContador = function(modo, totalNuvem = 0) {
             const el = document.getElementById('statusContador');
             const pendentes = window.redesEmMemoria.filter(r => String(r.id).startsWith('local_')).length;
             const total = window.redesEmMemoria.length;
             
-            let avisoPendentes = pendentes > 0 ? `<span style="color:#F59E0B; font-weight:bold; background:#FEF3C7; padding:2px 6px; border-radius:4px;">⚠️ ${pendentes} offline</span>` : '';
+            let avisoPendentes = pendentes > 0 ? `<span style="color:#F59E0B; font-weight:bold; background:#FEF3C7; padding:2px 6px; border-radius:4px; margin-left: 5px;">⚠️ ${pendentes} pendente(s)</span>` : '';
 
+            // Agora mostra a quantidade total de redes salvas mesmo estando offline
             if (modo === 'offline') {
-                el.innerHTML = `<span style="color:gray; font-weight:bold;">📱 Sem Internet</span> ${avisoPendentes}`;
+                el.innerHTML = `<span style="color:gray; font-weight:bold;">📱 Sem Internet (${total} redes)</span> ${avisoPendentes}`;
             } else if (modo === 'sincronizando') {
                 el.innerHTML = `<span style="color:orange; font-weight:bold;">⏳ Sincronizando...</span>`;
             } else if (modo === 'sincronizado') {
-                el.innerHTML = `<span style="color:green; font-weight:bold;">☁️ Sincronizado (${totalNuvem})</span>`;
+                el.innerHTML = `<span style="color:green; font-weight:bold;">☁️ Sincronizado (${totalNuvem} redes)</span>`;
             }
         };
 
-        window.sincronizarPendentes = function() {
+        // --- SINCRONIZAÇÃO SEM LOOP FATAL ---
+        window.sincronizarPendentes = async function() {
             if (typeof window.firebasePush !== 'function') return;
             const pendentes = window.redesEmMemoria.filter(r => String(r.id).startsWith('local_'));
             
             if (pendentes.length > 0) {
+                // 1. Remove da memória ANTES de enviar. Isso impede que o Firebase crie um loop infinito
+                window.redesEmMemoria = window.redesEmMemoria.filter(r => !String(r.id).startsWith('local_'));
+                await window.atualizarBackupLocal(window.redesEmMemoria);
+                
+                // 2. Só então envia os dados para a nuvem de forma segura
                 pendentes.forEach(rede => {
                     window.firebasePush(rede.ssid, rede.senha, rede.lat, rede.lng);
                 });
-                // Remove os provisórios imediatamente para não duplicar na nuvem
-                window.redesEmMemoria = window.redesEmMemoria.filter(r => !String(r.id).startsWith('local_'));
-                window.atualizarBackupLocal(window.redesEmMemoria);
             }
         };
 
-        // Eventos que disparam quando a internet cai ou volta na mesma hora
+        // Eventos que monitoram a internet caindo e voltando
         window.addEventListener('online', () => {
-            if (typeof window.iniciarFirebaseSeguro === 'function' && typeof window.firebasePush === 'undefined') {
-                window.iniciarFirebaseSeguro();
-            } else {
+            window.atualizarContador('sincronizando');
+            if (typeof window.firebasePush === 'function') {
                 window.sincronizarPendentes();
-                window.atualizarContador('sincronizando');
+            } else {
+                if (typeof window.iniciarFirebaseSeguro === 'function') window.iniciarFirebaseSeguro();
             }
         });
 
@@ -249,7 +253,7 @@
             if(inputOculta) inputOculta.value = txtBackup;
         };
 
-        // 2. FUNÇÕES DE CRUD (TRAVADAS PARA OFFLINE)
+        // 2. FUNÇÕES DE CRUD
         window.salvarRedeLocal = async function() {
             const s = document.getElementById('novoSSID').value.trim();
             const p = document.getElementById('novaSenha').value.trim();
@@ -268,7 +272,6 @@
 
             let novoId = 'local_' + Date.now() + Math.floor(Math.random() * 1000); 
 
-            // BLOQUEIO: Só tenta mandar pro Firebase se a internet do aparelho estiver LIGADA
             if (navigator.onLine && typeof window.firebasePush === 'function') {
                 try {
                     const key = window.firebasePush(s, p, lat, lng);
@@ -283,7 +286,6 @@
             window.atualizarBackupLocal(window.redesEmMemoria);
             if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
             
-            // Atualiza visual na hora
             window.atualizarContador(navigator.onLine ? 'sincronizando' : 'offline');
             
             fecharModal(); btnSalvar.innerText = "Salvar"; btnSalvar.disabled = false;
@@ -498,7 +500,6 @@
                 const db = getDatabase(app);
                 const redesRef = ref(db, 'redes_wifi');
 
-                // Funções conectadas à nuvem
                 window.firebasePush = function(s, p, lat, lng) {
                     const novaRedeRef = push(redesRef);
                     set(novaRedeRef, { ssid: s, senha: p, lat, lng }).catch(()=>{});
@@ -513,11 +514,11 @@
                     update(ref(db, 'redes_wifi/' + id), { lat, lng }).catch(()=>{});
                 };
 
-                // Escuta a Nuvem
-                onValue(redesRef, (snapshot) => {
-                    // MÁGICA DE SINCRONIZAÇÃO: Limpa a fila local ANTES de pegar os dados novos
-                    window.sincronizarPendentes();
+                // Removemos o "sincronizarPendentes" de dentro do onValue para evitar o loop. 
+                // Ele roda apenas uma vez quando o Firebase conecta:
+                window.sincronizarPendentes();
 
+                onValue(redesRef, (snapshot) => {
                     const dados = snapshot.val();
                     let listaNuvem = [];
                     if (dados) {
@@ -540,11 +541,15 @@
                 });
 
             } catch (error) {
-                console.warn("Modo Offline ativado no boot: O Firebase não pôde ser carregado.", error);
+                console.warn("Modo Offline ativado: Firebase não carregou.", error);
+                window.atualizarContador('offline');
             }
         }
         
-        window.iniciarFirebaseSeguro();
+        // Verifica a internet antes de tentar ligar o banco em nuvem
+        if (navigator.onLine) {
+            window.iniciarFirebaseSeguro();
+        }
     </script>
 
     <script>
