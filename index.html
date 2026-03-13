@@ -22,7 +22,6 @@
             --header-bg: rgba(255, 255, 255, 0.98); --modal-bg: #ffffff; --input-bg: #ffffff; --input-text: #111827; --btn-copy-bg: #f0f0f0;
         }
 
-        /* Cores Modo Escuro */
         @media (prefers-color-scheme: dark) {
             :root {
                 --bg-color: #111827; --card-bg: #1F2937; --text-main: #F9FAFB; --text-muted: #9CA3AF; --border: #374151;
@@ -67,13 +66,15 @@
         #toast { visibility: hidden; position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%); background: #1F2937; color: #fff; padding: 12px 24px; border-radius: 8px; z-index: 2000; transition: 0.3s; font-weight: bold; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
         #toast.show { visibility: visible; }
 
-        /* Estilo do novo TOAST de DESFAZER */
         #toast-undo { visibility: hidden; position: fixed; left: 50%; bottom: 30px; transform: translateX(-50%); background: #1F2937; color: #fff; padding: 12px 20px; border-radius: 8px; z-index: 2001; transition: 0.3s; display: flex; align-items: center; gap: 15px; font-weight: bold; box-shadow: 0 4px 15px rgba(0,0,0,0.3); }
         #toast-undo.show { visibility: visible; }
         .btn-undo { background: transparent; color: #60A5FA; border: none; padding: 5px; font-weight: bold; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; }
         .btn-undo:hover { color: #93C5FD; text-decoration: underline; opacity: 1; }
         
         #reader { width: 100%; border-radius: 8px; overflow: hidden; background: #000; }
+
+        /* Arruma a cor do controle de camadas do mapa no modo noturno para ficar visível */
+        .leaflet-control-layers { background: var(--modal-bg) !important; color: var(--text-main) !important; }
     </style>
 </head>
 <body>
@@ -110,8 +111,9 @@
     <div id="modalMapa" class="modal-overlay">
         <div class="modal-content" style="max-width: 500px;">
             <h3 id="tituloModalMapa">📍 Localização da Rede</h3>
+            <button class="btn-geo" id="btnGpsMapa" onclick="usarMeuGPSNoMapa()" style="margin-bottom: 5px; width: 100%; background: #0EA5E9;">🎯 Usar meu GPS atual</button>
             <div id="mapa-container" style="height: 300px; width: 100%; border-radius: 8px; border: 1px solid var(--border);"></div>
-            <div style="display:flex; gap:10px; justify-content: flex-end;">
+            <div style="display:flex; gap:10px; justify-content: flex-end; margin-top:10px;">
                 <button style="background:var(--text-muted)" onclick="fecharMapa()">Cancelar</button>
                 <button class="btn-add" onclick="salvarLocalizacaoMapa()">Salvar Coordenada</button>
             </div>
@@ -121,7 +123,7 @@
     <div id="modalMapaGlobal" class="modal-overlay">
         <div class="modal-content" style="max-width: 800px; width: 95%; height: 85vh;">
             <h3>🗺️ Todas as suas Redes</h3>
-            <p style="font-size:12px; color:var(--text-muted); margin-top:-10px;">Mostrando redes salvas com GPS</p>
+            <p style="font-size:12px; color:var(--text-muted); margin-top:-10px;">Use o ícone no canto direito do mapa para trocar entre Satélite e Padrão.</p>
             <div id="mapa-global-container" style="flex-grow: 1; width: 100%; border-radius: 8px; border: 1px solid var(--border); min-height: 300px;"></div>
             <div style="display:flex; justify-content: flex-end; margin-top:10px;">
                 <button style="background:var(--text-muted)" onclick="fecharMapaGlobal()">Fechar Mapa</button>
@@ -170,12 +172,15 @@
         window.radarWatchId = null;
         window.redeDuplicadaAtual = null;
 
-        // Variáveis de controle para o Desfazer
         window.redePendenteExclusao = null;
         window.deleteTimeout = null;
 
         let map, mapMarker, redeEditandoMapa;
         let mapGlobal; 
+
+        // URLs dos Mapas
+        const TILE_SATELLITE = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+        const TILE_OSM = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
 
         // --- SISTEMA INDEXED DB ---
         window.initDB = function() {
@@ -200,7 +205,7 @@
                 store.clear(); 
                 lista.forEach(item => store.put(item));
                 return new Promise(resolve => tx.oncomplete = resolve);
-            } catch (e) { console.error("Erro ao salvar no IndexedDB", e); }
+            } catch (e) {}
         };
 
         window.lerDoIndexedDB = async function() {
@@ -247,11 +252,8 @@
 
         window.addEventListener('online', () => {
             window.atualizarContador('sincronizando');
-            if (typeof window.firebasePush === 'function') {
-                window.sincronizarPendentes();
-            } else {
-                if (typeof window.iniciarFirebaseSeguro === 'function') window.iniciarFirebaseSeguro();
-            }
+            if (typeof window.firebasePush === 'function') window.sincronizarPendentes();
+            else if (typeof window.iniciarFirebaseSeguro === 'function') window.iniciarFirebaseSeguro();
         });
 
         window.addEventListener('offline', () => { window.atualizarContador('offline'); });
@@ -299,55 +301,38 @@
             if(inputOculta) inputOculta.value = txtBackup; 
         };
 
-        // --- SISTEMA DE EXCLUSÃO COM "DESFAZER" (UNDO) ---
+        // --- SISTEMA DE EXCLUSÃO COM "DESFAZER" ---
         window.iniciarExclusao = function(id, ssid) {
-            // Se já tem outra rede esperando, apaga a anterior de vez
-            if (window.redePendenteExclusao) {
-                window.confirmarExclusaoDefinitiva();
-            }
-
-            // Encontra a rede que o usuário quer apagar
+            if (window.redePendenteExclusao) window.confirmarExclusaoDefinitiva();
             const rede = window.redesEmMemoria.find(r => r.id === id);
             if (!rede) return;
 
-            // Guarda na memória temporária
             window.redePendenteExclusao = rede;
-
-            // Remove visualmente e do banco local
             window.redesEmMemoria = window.redesEmMemoria.filter(r => r.id !== id);
             window.atualizarBackupLocal(window.redesEmMemoria);
             
             renderizarInterface(window.redesEmMemoria);
             if (!navigator.onLine || typeof window.firebasePush === 'undefined') window.atualizarContador('offline');
 
-            // Mostra o Toast com o botão Desfazer
             const tUndo = document.getElementById('toast-undo');
             document.getElementById('toast-undo-text').innerText = `Rede ${ssid} apagada.`;
             tUndo.className = 'show';
 
-            // Inicia a contagem de 5 segundos para o arrependimento
-            window.deleteTimeout = setTimeout(() => {
-                window.confirmarExclusaoDefinitiva();
-            }, 5000);
+            window.deleteTimeout = setTimeout(() => { window.confirmarExclusaoDefinitiva(); }, 5000);
         };
 
         window.desfazerExclusao = function() {
             if (!window.redePendenteExclusao) return;
-            
-            // Cancela a bomba-relógio
             clearTimeout(window.deleteTimeout);
             
-            // Pega a rede de volta e organiza a lista
             window.redesEmMemoria.push(window.redePendenteExclusao);
             window.redesEmMemoria.sort((a, b) => a.ssid.localeCompare(b.ssid));
             
-            // Salva de volta no banco local
             window.atualizarBackupLocal(window.redesEmMemoria);
             renderizarInterface(window.redesEmMemoria);
             
             if (!navigator.onLine || typeof window.firebasePush === 'undefined') window.atualizarContador('offline');
 
-            // Limpa e avisa
             window.redePendenteExclusao = null;
             document.getElementById('toast-undo').className = '';
             mostrarToast("Ação desfeita! Rede restaurada.");
@@ -356,12 +341,9 @@
         window.confirmarExclusaoDefinitiva = function() {
             if (!window.redePendenteExclusao) return;
             const id = window.redePendenteExclusao.id;
-
-            // Envia ordem para o Firebase apagar (se tiver internet)
             if (navigator.onLine && typeof window.firebaseExcluir === 'function' && !id.toString().startsWith('local_')) {
                 window.firebaseExcluir(id);
             }
-
             window.redePendenteExclusao = null;
             document.getElementById('toast-undo').className = '';
         };
@@ -450,8 +432,8 @@
             fecharModalAvancado();
         };
 
-        window.exportarTXT = function() { /* Omitido por clareza, já existe acima */ };
-        window.exportarPDF = function() { /* Omitido por clareza, já existe acima */ };
+        window.exportarTXT = function() { /* Omitido por clareza */ };
+        window.exportarPDF = function() { /* Omitido por clareza */ };
 
         window.atualizarGeoRedeExistente = async function() {
             if (!window.redeDuplicadaAtual || !window.redeDuplicadaAtual.id) return;
@@ -526,12 +508,30 @@
             }, () => window.pararRadar(), {enableHighAccuracy: true});
         };
 
+        // --- MAPAS COM BOTÃO DE CAMADAS (SATÉLITE / PADRÃO) ---
         window.abrirMapaGlobal = function() {
             if (typeof L === 'undefined') { alert("Conecte-se à internet para carregar o mapa."); return; }
             document.getElementById('modalMapaGlobal').style.display = 'flex';
             if(mapGlobal) { mapGlobal.remove(); }
-            mapGlobal = L.map('mapa-global-container').setView([-15, -50], 4); 
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(mapGlobal);
+            
+            mapGlobal = L.map('mapa-global-container', {
+                center: [-15, -50],
+                zoom: 4
+            }); 
+            
+            // Cria as duas camadas
+            const satLayer = L.tileLayer(TILE_SATELLITE, { maxZoom: 18 });
+            const osmLayer = L.tileLayer(TILE_OSM, { maxZoom: 19 });
+
+            // Adiciona Satélite como padrão
+            satLayer.addTo(mapGlobal);
+
+            // Adiciona o controle no canto superior direito para trocar o mapa
+            L.control.layers({
+                "Satélite (Visual)": satLayer,
+                "Mapa Padrão (Leve)": osmLayer
+            }).addTo(mapGlobal);
+            
             const redesComGeo = window.redesEmMemoria.filter(r => r.lat && r.lng && r.lat !== 'null');
             if (redesComGeo.length > 0) {
                 const bounds = L.latLngBounds();
@@ -541,7 +541,7 @@
                     marker.bindPopup(`<b>${r.ssid}</b><br>Senha: ${r.senha}`);
                     bounds.extend([lat, lng]);
                 });
-                mapGlobal.fitBounds(bounds, { padding: [20, 20], maxZoom: 16 });
+                setTimeout(() => mapGlobal.fitBounds(bounds, { padding: [30, 30], maxZoom: 18 }), 300);
             }
             setTimeout(() => mapGlobal.invalidateSize(), 400);
         };
@@ -553,16 +553,60 @@
             document.getElementById('tituloModalMapa').innerText = `📍 ${ssid}`;
             redeEditandoMapa = { id };
             if(map) { map.remove(); mapMarker = null; }
+            
             const l = lat && lat !== 'null' ? parseFloat(lat) : -15; const g = lng && lng !== 'null' ? parseFloat(lng) : -50;
-            map = L.map('mapa-container').setView([l, g], lat ? 16 : 4);
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+            
+            map = L.map('mapa-container', {
+                center: [l, g],
+                zoom: lat ? 18 : 4
+            });
+
+            // Cria as duas camadas
+            const satLayer = L.tileLayer(TILE_SATELLITE, { maxZoom: 18 });
+            const osmLayer = L.tileLayer(TILE_OSM, { maxZoom: 19 });
+
+            // Adiciona Satélite como padrão
+            satLayer.addTo(map);
+
+            // Adiciona o controle de camadas
+            L.control.layers({
+                "Satélite (Visual)": satLayer,
+                "Mapa Padrão (Leve)": osmLayer
+            }).addTo(map);
+            
             if(lat && lat !== 'null') mapMarker = L.marker([l, g]).addTo(map);
-            map.on('click', (e) => { if(mapMarker) mapMarker.setLatLng(e.latlng); else mapMarker = L.marker(e.latlng).addTo(map); });
+            
+            map.on('click', (e) => { 
+                if(mapMarker) mapMarker.setLatLng(e.latlng); 
+                else mapMarker = L.marker(e.latlng).addTo(map); 
+            });
             setTimeout(() => map.invalidateSize(), 400);
         };
 
+        window.usarMeuGPSNoMapa = async function() {
+            if (!map) return;
+            const btn = document.getElementById('btnGpsMapa');
+            const textoOriginal = btn.innerText;
+            btn.innerText = "🎯 Buscando satélites...";
+            btn.disabled = true;
+
+            try {
+                const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { 
+                    enableHighAccuracy: true, timeout: 10000, maximumAge: 0 
+                }));
+                const novaLat = pos.coords.latitude; 
+                const novaLng = pos.coords.longitude;
+
+                map.setView([novaLat, novaLng], 18); 
+                if(mapMarker) { mapMarker.setLatLng([novaLat, novaLng]); } 
+                else { mapMarker = L.marker([novaLat, novaLng]).addTo(map); }
+                mostrarToast("GPS Encontrado! Clique em Salvar.");
+            } catch (error) { alert("Não foi possível obter o GPS."); } 
+            finally { btn.innerText = textoOriginal; btn.disabled = false; }
+        };
+
         window.salvarLocalizacaoMapa = function() {
-            if(!mapMarker) return;
+            if(!mapMarker) { mostrarToast("Clique no mapa para marcar o local primeiro!"); return; }
             const { lat, lng } = mapMarker.getLatLng();
             if (navigator.onLine && typeof window.firebaseAtualizar === 'function' && !redeEditandoMapa.id.toString().startsWith('local_')) { window.firebaseAtualizar(redeEditandoMapa.id, lat, lng); }
             const index = window.redesEmMemoria.findIndex(r => r.id === redeEditandoMapa.id);
@@ -695,7 +739,6 @@
                         listaNuvem = Object.keys(dados).map(c => ({ id: c, ...dados[c] }));
                     }
 
-                    // ESCONDE DA TELA A REDE QUE O USUÁRIO ESTÁ TENTANDO APAGAR NO MOMENTO (DESFAZER)
                     if (window.redePendenteExclusao) {
                         listaNuvem = listaNuvem.filter(r => r.id !== window.redePendenteExclusao.id);
                     }
