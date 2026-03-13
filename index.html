@@ -29,7 +29,7 @@
         button { padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer; background: var(--primary); color: white; border: none; border-radius: 6px; display: flex; align-items: center; justify-content: center; gap: 6px; }
         button:disabled { opacity: 0.6; cursor: not-allowed; }
         .btn-add { background: var(--success); } .btn-scan { background: var(--scanner); } .btn-geo { background: var(--geo); } .btn-delete { background: var(--danger); color: white; }
-        .info-status { font-size: 13px; font-weight: bold; margin-left: auto; }
+        .info-status { font-size: 13px; margin-left: auto; display: flex; align-items: center; gap: 5px; }
         .content-area { padding: 20px; }
         #output { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px; max-width: 1200px; margin: 0 auto; }
         .card { background: #fff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); border: 1px solid var(--border); text-align: center; display: flex; flex-direction: column; align-items: center; position: relative; min-height: 250px; }
@@ -165,28 +165,50 @@
             } catch (e) { return []; }
         };
 
-        // 1. CARREGAMENTO E CONTADOR OFFLINE
+        // --- FUNÇÃO CENTRAL DO CONTADOR (NOVIDADE) ---
+        window.atualizarContador = function(modo, totalNuvem = 0) {
+            const el = document.getElementById('statusContador');
+            
+            // Conta quantas redes estão só no modo local
+            const pendentes = window.redesEmMemoria.filter(r => String(r.id).startsWith('local_')).length;
+            const total = window.redesEmMemoria.length;
+            
+            // Monta o aviso laranjinha se houver redes pendentes
+            let avisoPendentes = pendentes > 0 ? `<span style="color:#F59E0B; font-weight:bold; background:#FEF3C7; padding:2px 6px; border-radius:4px;">⚠️ ${pendentes} pendente${pendentes > 1 ? 's' : ''}</span>` : '';
+
+            if (modo === 'offline') {
+                el.innerHTML = `<span style="color:gray; font-weight:bold;">📱 Offline (${total} redes)</span> ${avisoPendentes}`;
+            } else if (modo === 'migrado') {
+                el.innerHTML = `<span style="color:gray; font-weight:bold;">📱 Migrado (${total} redes)</span> ${avisoPendentes}`;
+            } else if (modo === 'sincronizando') {
+                el.innerHTML = `<span style="color:orange; font-weight:bold;">⏳ Sincronizando...</span>`;
+            } else if (modo === 'sincronizado') {
+                el.innerHTML = `<span style="color:green; font-weight:bold;">☁️ Sincronizado (${totalNuvem} redes)</span>`;
+            }
+        };
+
+        // 1. CARREGAMENTO E INICIALIZAÇÃO
         window.addEventListener('DOMContentLoaded', async () => {
             try {
                 const dadosLocal = await window.lerDoIndexedDB();
                 if (dadosLocal && dadosLocal.length > 0) {
                     window.redesEmMemoria = dadosLocal;
                     renderizarInterface(window.redesEmMemoria);
-                    document.getElementById('statusContador').innerHTML = `<span style="color:gray">📱 Offline (${dadosLocal.length} redes)</span>`;
+                    window.atualizarContador('offline');
                 } else {
                     const cacheGeo = localStorage.getItem(DB_GEO_KEY);
                     if (cacheGeo) { 
                         window.redesEmMemoria = JSON.parse(cacheGeo);
                         renderizarInterface(window.redesEmMemoria);
                         window.salvarNoIndexedDB(window.redesEmMemoria); 
-                        document.getElementById('statusContador').innerHTML = `<span style="color:gray">📱 Offline Migrado (${window.redesEmMemoria.length} redes)</span>`;
+                        window.atualizarContador('migrado');
                     } else {
-                        document.getElementById('statusContador').innerHTML = `<span style="color:gray">📱 Offline (0 redes)</span>`;
+                        window.atualizarContador('offline');
                     }
                 }
             } catch (e) { console.error("Falha no carregamento local", e); }
             
-            // Intersection Observer
+            // Intersection Observer para os QRs
             if (typeof QRCode !== 'undefined') {
                 window.observer = new IntersectionObserver((entries) => {
                     entries.forEach(entry => {
@@ -241,9 +263,11 @@
             
             if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
             
-            // Atualiza o contador imediatamente se foi salvo como local (offline)
-            if (novoId.toString().startsWith('local_')) {
-                document.getElementById('statusContador').innerHTML = `<span style="color:gray">📱 Offline (${window.redesEmMemoria.length} redes)</span>`;
+            // Atualiza visual usando a nova função
+            if (!navigator.onLine || typeof window.firebasePush === 'undefined') {
+                window.atualizarContador('offline');
+            } else {
+                window.atualizarContador('sincronizando');
             }
             
             fecharModal(); btnSalvar.innerText = "Salvar"; btnSalvar.disabled = false;
@@ -260,8 +284,11 @@
                 window.atualizarBackupLocal(window.redesEmMemoria);
                 if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
                 
+                // Atualiza visual usando a nova função
                 if (!navigator.onLine || typeof window.firebasePush === 'undefined') {
-                    document.getElementById('statusContador').innerHTML = `<span style="color:gray">📱 Offline (${window.redesEmMemoria.length} redes)</span>`;
+                    window.atualizarContador('offline');
+                } else {
+                    window.atualizarContador('sincronizando');
                 }
 
                 mostrarToast("Excluído!");
@@ -469,24 +496,18 @@
                         listaNuvem = Object.keys(dados).map(c => ({ id: c, ...dados[c] }));
                     }
 
-                    // --- MÁGICA DA SINCRONIZAÇÃO AQUI ---
-                    // Verifica se existem redes criadas offline na memória (ID começa com 'local_')
+                    // --- MÁGICA DA SINCRONIZAÇÃO ---
                     const redesOffline = window.redesEmMemoria.filter(r => String(r.id).startsWith('local_'));
                     
                     if (redesOffline.length > 0) {
-                        // Envia as redes offline para a nuvem
                         redesOffline.forEach(rede => {
                             window.firebasePush(rede.ssid, rede.senha, rede.lat, rede.lng);
                         });
                         
-                        // Remove as redes temporárias da memória local para não duplicar envios
                         window.redesEmMemoria = window.redesEmMemoria.filter(r => !String(r.id).startsWith('local_'));
-                        
-                        // O firebasePush vai acionar este onValue novamente em milissegundos, 
-                        // então interrompemos aqui para evitar que a tela apague suas redes antes da hora.
                         return; 
                     }
-                    // ------------------------------------
+                    // -------------------------------
 
                     listaNuvem.sort((a, b) => a.ssid.localeCompare(b.ssid));
                     
@@ -500,7 +521,8 @@
                         window.salvarNoIndexedDB(listaNuvem);
                     }
                     
-                    document.getElementById('statusContador').innerHTML = `<span style="color:green">☁️ Sincronizado (${listaNuvem.length} redes)</span>`;
+                    // Atualiza visual como Sincronizado
+                    window.atualizarContador('sincronizado', listaNuvem.length);
                 });
 
                 window.firebasePush = function(s, p, lat, lng) {
