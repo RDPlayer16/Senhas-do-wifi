@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wi-Fi Manager Pro - Maps Edition</title>
+    <title>Wi-Fi Manager Pro - Realtime Radar</title>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#4F46E5">
 
@@ -100,8 +100,6 @@
         .card-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; width: 100%; margin-top: auto; }
         .btn-mini { padding: 8px; font-size: 11px; border-radius: 4px; width: 100%; box-sizing: border-box; }
         .btn-delete { background: var(--danger); color: white; }
-        
-        /* Ocupar a linha inteira para o botão do mapa */
         .col-span-2 { grid-column: span 2; }
 
         .modal-overlay {
@@ -240,6 +238,9 @@
         let map;
         let mapMarker;
         let redeEditandoMapa = null;
+        
+        // Variável do Radar em Tempo Real
+        window.radarWatchId = null;
 
         // 1. CARREGAMENTO INICIAL OFFLINE
         function carregarOffline() {
@@ -291,31 +292,23 @@
 
             if (map) { map.remove(); mapMarker = null; }
 
-            // Lógica de centralização (Se tem LAT/LNG usa, senão vai pro meio do Brasil)
             let initialLat = (lat && lat !== 'null') ? parseFloat(lat) : -14.235;
             let initialLng = (lng && lng !== 'null') ? parseFloat(lng) : -51.925;
             let zoom = (lat && lat !== 'null') ? 16 : 4;
 
             map = L.map('mapa-container').setView([initialLat, initialLng], zoom);
             
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '© OpenStreetMap'
-            }).addTo(map);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap' }).addTo(map);
 
-            if (lat && lat !== 'null') {
-                mapMarker = L.marker([initialLat, initialLng]).addTo(map);
-            }
+            if (lat && lat !== 'null') { mapMarker = L.marker([initialLat, initialLng]).addTo(map); }
 
-            // Invalida o tamanho para o mapa renderizar certo dentro do modal
             setTimeout(() => { map.invalidateSize(); }, 300);
 
-            // Tocar no mapa para mover o pino
             map.on('click', function(e) {
                 if (mapMarker) { mapMarker.setLatLng(e.latlng); } 
                 else { mapMarker = L.marker(e.latlng).addTo(map); }
             });
 
-            // Se não tem localização, tenta puxar do celular para facilitar
             if (!lat || lat === 'null') {
                 navigator.geolocation.getCurrentPosition(pos => {
                     const myLat = pos.coords.latitude; const myLng = pos.coords.longitude;
@@ -355,7 +348,6 @@
             if (!mapMarker) { alert("Toque no mapa para marcar um local!"); return; }
             const pos = mapMarker.getLatLng();
             
-            // Offline-First Update
             if (redeEditandoMapa.id && redeEditandoMapa.id !== 'undefined') {
                 update(ref(db, 'redes_wifi/' + redeEditandoMapa.id), { lat: pos.lat, lng: pos.lng }).catch(e => console.log("Update fila"));
             }
@@ -373,7 +365,7 @@
         };
 
         // ==========================================
-        // RESTANTE DA LÓGICA (SALVAR, EXCLUIR, ETC)
+        // RESTANTE DA LÓGICA (SALVAR, EXCLUIR)
         // ==========================================
 
         window.salvarRedeLocalENuvem = async function() {
@@ -452,36 +444,98 @@
             return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
         }
 
+        // ==========================================
+        // RADAR EM TEMPO REAL (NOVO)
+        // ==========================================
+
         window.buscarSenhasPorPerto = function() {
             const btnRadar = document.getElementById('btnRadar');
+
             if (mostrandoApenasProximas) {
-                mostrandoApenasProximas = false; renderizarInterface(window.redesEmMemoria);
-                btnRadar.innerText = "📍 Por Perto"; btnRadar.style.background = "var(--geo)";
-                mostrarToast("Mostrando todas as redes."); return;
+                mostrandoApenasProximas = false;
+                
+                if (window.radarWatchId !== null) {
+                    navigator.geolocation.clearWatch(window.radarWatchId);
+                    window.radarWatchId = null;
+                }
+                
+                renderizarInterface(window.redesEmMemoria);
+                btnRadar.innerText = "📍 Por Perto"; 
+                btnRadar.style.background = "var(--geo)";
+                mostrarToast("Radar desativado. Mostrando todas as redes."); 
+                return;
             }
 
-            btnRadar.innerText = "Buscando..."; btnRadar.disabled = true;
-            navigator.geolocation.getCurrentPosition((pos) => {
-                const minhaLat = pos.coords.latitude; const minhaLng = pos.coords.longitude;
+            btnRadar.innerText = "📡 Rastreando..."; 
+            btnRadar.disabled = true;
+
+            window.radarWatchId = navigator.geolocation.watchPosition((pos) => {
+                const minhaLat = pos.coords.latitude; 
+                const minhaLng = pos.coords.longitude;
+                
                 const redesProximas = window.redesEmMemoria.filter(rede => {
                     if (!rede.lat || !rede.lng) return false;
                     const distancia = calcularDistancia(minhaLat, minhaLng, rede.lat, rede.lng);
-                    rede.distancia_atual = distancia; return distancia <= 150;
+                    rede.distancia_atual = distancia; 
+                    return distancia <= 150; 
                 });
 
                 redesProximas.sort((a, b) => a.distancia_atual - b.distancia_atual);
-                mostrandoApenasProximas = true; renderizarInterface(redesProximas, true);
                 
-                btnRadar.innerText = "❌ Limpar Radar"; btnRadar.style.background = "var(--danger)"; btnRadar.disabled = false;
-                if (redesProximas.length === 0) mostrarToast("Nenhuma rede num raio de 150m.");
-                else mostrarToast(`Encontradas ${redesProximas.length} redes perto!`);
+                mostrandoApenasProximas = true; 
+                renderizarInterface(redesProximas, true);
+                
+                btnRadar.innerText = "❌ Parar Radar"; 
+                btnRadar.style.background = "var(--danger)"; 
+                btnRadar.disabled = false;
+                
             }, (erro) => {
-                btnRadar.innerText = "📍 Por Perto"; btnRadar.disabled = false; alert("Ative a localização do seu dispositivo.");
-            }, { timeout: 10000, enableHighAccuracy: true }); 
+                btnRadar.innerText = "📍 Por Perto"; 
+                btnRadar.disabled = false; 
+                
+                if (window.radarWatchId !== null) {
+                    navigator.geolocation.clearWatch(window.radarWatchId);
+                    window.radarWatchId = null;
+                }
+                alert("Erro ao rastrear localização. Ative o GPS e permita o acesso.");
+            }, { 
+                enableHighAccuracy: true,
+                maximumAge: 0,
+                timeout: 5000
+            });
         };
 
         window.sincronizarParaNuvem = async function() {
-            // ... (Código mantido igual ao anterior para manual sync) ...
+            const status = document.getElementById('statusSyncManual');
+            status.innerText = "Sincronizando..."; status.style.color = "var(--warning)";
+            const textoManual = document.getElementById('listaInputOculta').value;
+            
+            const linhasRaw = textoManual.split('\n').map(l => l.trim()).filter(l => l.length > 2);
+            const listaManual = [];
+            linhasRaw.forEach(linha => {
+                const l = linha.replace(/^\*\s*/, ''); const p = l.indexOf(':');
+                if (p !== -1) {
+                    let ssid = l.substring(0, p).trim(); let senha = l.substring(p + 1).trim().replace(/:$/, '');
+                    if (ssid && senha) listaManual.push({ssid: ssid, senha: senha});
+                }
+            });
+
+            try {
+                const snapshot = await get(redesRef);
+                const dadosNuvem = snapshot.val() || {};
+                const senhasNuvem = Object.values(dadosNuvem).map(r => `${r.ssid}|||${r.senha}`);
+
+                let enviadas = 0;
+                for (let red of listaManual) {
+                    const chave = `${red.ssid}|||${red.senha}`;
+                    if (!senhasNuvem.includes(chave)) {
+                        await set(push(redesRef), { ssid: red.ssid, senha: red.senha });
+                        enviadas++;
+                    }
+                }
+                status.innerText = `Sucesso! ${enviadas} redes enviadas.`; status.style.color = "var(--success)";
+                setTimeout(() => fecharModalAvancado(), 2000);
+            } catch(e) { status.innerText = "Sem internet para envio manual."; status.style.color = "var(--danger)"; }
         };
 
         function renderizarInterface(lista, modoRadar = false) {
@@ -493,7 +547,6 @@
                 if (modoRadar && red.distancia_atual !== undefined) geoTag = `<div class="badge-geo" style="background:#DCFCE7; color:#166534">A ${Math.round(red.distancia_atual)}m</div>`;
                 else if (red.lat) geoTag = `<div class="badge-geo">📍 Local Salvo</div>`;
 
-                // NOVO BOTAO DO MAPA AQUI
                 let txtBotaoMapa = red.lat ? "🗺️ Editar Local" : "📍 Add Local";
                 let corBotaoMapa = red.lat ? "#0EA5E9" : "#6366F1";
 
@@ -554,8 +607,24 @@
 
         let scannerInstancia = null;
         function abrirScanner() {
-            // ... (mesmo código do scanner)
+            document.getElementById('modalScanner').style.display = 'flex';
+            scannerInstancia = new Html5QrcodeScanner("reader", { fps: 10, qrbox: {width: 250, height: 250} }, false);
+            scannerInstancia.render((decodedText) => {
+                if (decodedText.toUpperCase().startsWith("WIFI:")) {
+                    let ssid = "", senha = ""; const partes = decodedText.substring(5).split(";");
+                    for (let parte of partes) {
+                        if (parte.toUpperCase().startsWith("S:")) ssid = parte.substring(2);
+                        else if (parte.toUpperCase().startsWith("P:")) senha = parte.substring(2);
+                    }
+                    if (ssid) {
+                        fecharScanner(); abrirModal();
+                        document.getElementById('novoSSID').value = ssid; document.getElementById('novaSenha').value = senha || "SEM_SENHA";
+                        checarDuplicadoModal();
+                    }
+                }
+            }, () => {});
         }
+
         function fecharScanner() { if (scannerInstancia) { scannerInstancia.clear(); scannerInstancia = null; } document.getElementById('modalScanner').style.display = 'none'; }
         function copy(t) { const el = document.createElement('textarea'); el.value = t; document.body.appendChild(el); el.select(); document.execCommand('copy'); document.body.removeChild(el); mostrarToast("Copiado!"); }
         function filtrar() { const val = document.getElementById('searchInput').value.toLowerCase(); document.querySelectorAll('.card').forEach(c => c.style.display = c.dataset.nomeRede.includes(val) ? 'flex' : 'none'); }
