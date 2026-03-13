@@ -91,9 +91,11 @@
     <div id="modalAvancado" class="modal-overlay">
         <div class="modal-content">
             <h3>⚙️ Modo Desenvolvedor</h3>
-            <textarea id="listaInputOculta"></textarea>
+            <p style="font-size:12px; color:#666; margin-top:0;">Cole sua lista abaixo no formato <b>* NOME: SENHA</b> para importar.</p>
+            <textarea id="listaInputOculta" placeholder="* MinhaRedeWiFi: 12345678"></textarea>
             <div style="display:flex; gap:10px; justify-content: flex-end;">
                 <button style="background:#666" onclick="fecharModalAvancado()">Fechar</button>
+                <button class="btn-add" onclick="importarListaTexto()">📥 Importar</button>
             </div>
         </div>
     </div>
@@ -246,7 +248,91 @@
             await window.salvarNoIndexedDB(lista);
             const txtBackup = lista.map(r => `* ${r.ssid}: ${r.senha}`).join('\n\n');
             const inputOculta = document.getElementById('listaInputOculta');
-            if(inputOculta) inputOculta.value = txtBackup;
+            if(inputOculta) inputOculta.value = txtBackup; // Mantém a visualização atualizada
+        };
+
+        // --- NOVA FUNÇÃO DE IMPORTAÇÃO (BULK ADD) ---
+        window.importarListaTexto = async function() {
+            const texto = document.getElementById('listaInputOculta').value;
+            if (!texto.trim()) return;
+
+            const linhas = texto.split('\n');
+            let adicionados = 0;
+
+            linhas.forEach(linha => {
+                const l = linha.trim();
+                // Procura o padrão que criamos: começa com "* " e tem ": "
+                if (l.startsWith('* ')) {
+                    const indexDoisPontos = l.indexOf(': ');
+                    if (indexDoisPontos !== -1) {
+                        const ssidExtraido = l.substring(2, indexDoisPontos).trim();
+                        const senhaExtraida = l.substring(indexDoisPontos + 2).trim();
+
+                        // Só adiciona se não for duplicada
+                        const existe = window.redesEmMemoria.find(r => r.ssid === ssidExtraido && r.senha === senhaExtraida);
+                        
+                        if (!existe && ssidExtraido && senhaExtraida) {
+                            let novoId = 'local_' + Date.now() + Math.floor(Math.random() * 10000) + adicionados;
+                            
+                            if (navigator.onLine && typeof window.firebasePush === 'function') {
+                                try {
+                                    const key = window.firebasePush(ssidExtraido, senhaExtraida, null, null);
+                                    if (key) novoId = key;
+                                } catch(e) {}
+                            }
+
+                            window.redesEmMemoria.push({ id: novoId, ssid: ssidExtraido, senha: senhaExtraida, lat: null, lng: null });
+                            adicionados++;
+                        }
+                    }
+                }
+            });
+
+            if (adicionados > 0) {
+                window.redesEmMemoria.sort((a, b) => a.ssid.localeCompare(b.ssid));
+                await window.atualizarBackupLocal(window.redesEmMemoria);
+                
+                if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
+                
+                if (!navigator.onLine || typeof window.firebasePush === 'undefined') {
+                    window.atualizarContador('offline');
+                } else {
+                    window.atualizarContador('sincronizando');
+                }
+                mostrarToast(`${adicionados} nova(s) rede(s) importada(s)!`);
+            } else {
+                mostrarToast("Nenhuma rede nova encontrada no texto.");
+            }
+            fecharModalAvancado();
+        };
+
+        // --- EXPORTAR TXT E PDF ---
+        window.exportarTXT = function() {
+            if (window.redesEmMemoria.length === 0) { mostrarToast("Nenhuma rede para exportar."); return; }
+            let texto = "Senhas Wi-Fi Salvas\n\n";
+            window.redesEmMemoria.forEach(r => { texto += `* ${r.ssid}: ${r.senha}\n`; });
+            const blob = new Blob([texto], { type: "text/plain;charset=utf-8" });
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = "Senhas_WiFi_Backup.txt";
+            a.click();
+        };
+
+        window.exportarPDF = function() {
+            if (typeof window.jspdf === 'undefined') { alert("Conecte-se à internet para carregar a biblioteca de PDF."); return; }
+            if (window.redesEmMemoria.length === 0) { mostrarToast("Nenhuma rede para exportar."); return; }
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            doc.setFontSize(16);
+            doc.text("Backup de Senhas Wi-Fi", 10, 10);
+            doc.setFontSize(12);
+            let y = 20;
+            window.redesEmMemoria.forEach((r, i) => {
+                if (y > 280) { doc.addPage(); y = 10; }
+                doc.text(`${i+1}. ${r.ssid} - Senha: ${r.senha}`, 10, y);
+                y += 8;
+            });
+            doc.save("Senhas_WiFi_Backup.pdf");
         };
 
         // 2. FUNÇÕES DE CRUD
@@ -282,7 +368,6 @@
             window.atualizarBackupLocal(window.redesEmMemoria);
             if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
             
-            // CORREÇÃO: Atualiza o status apenas se estiver offline, caso contrário deixa o Firebase colocar o status de Sucesso!
             if (!navigator.onLine || typeof window.firebasePush === 'undefined') {
                 window.atualizarContador('offline');
             }
@@ -301,7 +386,6 @@
                 window.atualizarBackupLocal(window.redesEmMemoria);
                 if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
                 
-                // CORREÇÃO: Mesma regra, só força visual se não tiver internet
                 if (!navigator.onLine || typeof window.firebasePush === 'undefined') {
                     window.atualizarContador('offline');
                 }
@@ -478,7 +562,14 @@
         function fecharModal() { document.getElementById('modalNovaRede').style.display = 'none'; document.getElementById('novoSSID').value = ''; document.getElementById('novaSenha').value = ''; document.getElementById('msgDuplicadoModal').style.display = 'none'; document.getElementById('btnSalvarModal').style.display = 'flex'; document.getElementById('containerCheckLocalizacao').style.display = 'block'; document.getElementById('btnAdicionarGeo').style.display = 'none'; window.redeDuplicadaAtual = null; }
         function fecharMapa() { document.getElementById('modalMapa').style.display = 'none'; }
         function filtrar() { const v = document.getElementById('searchInput').value.toLowerCase(); document.querySelectorAll('.card').forEach(c => c.style.display = c.dataset.nomeRede.includes(v) ? 'flex' : 'none'); }
-        function abrirModalAvancado() { document.getElementById('modalAvancado').style.display = 'flex'; }
+        
+        // --- FUNÇÕES DO MODAL DESENVOLVEDOR ---
+        function abrirModalAvancado() { 
+            document.getElementById('modalAvancado').style.display = 'flex'; 
+            const inputOculta = document.getElementById('listaInputOculta');
+            // Preenche com os dados atuais quando abre
+            inputOculta.value = window.redesEmMemoria.map(r => `* ${r.ssid}: ${r.senha}`).join('\n\n');
+        }
         function fecharModalAvancado() { document.getElementById('modalAvancado').style.display = 'none'; }
     </script>
 
