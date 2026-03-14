@@ -112,7 +112,7 @@
 
     <div class="content-area">
         <div id="output"></div>
-        <div class="app-watermark">⚡ Wi-Fi Manager Pro • Desenvolvido por Raí Dias</div>
+        <div class="app-watermark">⚡ Wi-Fi Manager Pro • Desenvolvido por Você</div>
     </div>
     
     <div id="toast">Aviso!</div>
@@ -550,34 +550,65 @@
             }
         };
 
+        // --- CÓDIGO DO RADAR CORRIGIDO (IGNORA NULL E NÃO TRAVA) ---
         window.pararRadar = function(veioDoCopy = false) {
             window.mostrandoApenasProximas = false;
-            if (window.radarWatchId) { navigator.geolocation.clearWatch(window.radarWatchId); window.radarWatchId = null; }
-            document.getElementById('btnRadar').innerHTML = "<i>📍</i>Radar";
-            document.getElementById('btnRadar').style.color = "var(--text-muted)";
+            if (window.radarWatchId) { 
+                navigator.geolocation.clearWatch(window.radarWatchId); 
+                window.radarWatchId = null; 
+            }
+            const btn = document.getElementById('btnRadar');
+            if(btn) {
+                btn.innerHTML = "<i>📍</i>Radar";
+                btn.style.color = "var(--text-muted)";
+            }
             renderizarInterface(window.redesEmMemoria);
             if(!veioDoCopy) mostrarToast("Radar parado.");
         };
 
         window.buscarSenhasPorPerto = function() {
             if (window.mostrandoApenasProximas) return window.pararRadar();
+            
             const btn = document.getElementById('btnRadar');
             btn.innerHTML = "<i>📡</i>Buscando";
             btn.style.color = "var(--scanner)";
             
-            window.radarWatchId = navigator.geolocation.watchPosition((pos) => {
-                const { latitude, longitude } = pos.coords;
-                const proximas = window.redesEmMemoria.map(r => {
-                    if(!r.lat) return {...r, d: 999999};
-                    const d = calcularDistancia(latitude, longitude, r.lat, r.lng);
-                    return {...r, d};
-                }).filter(r => r.d <= 150).sort((a,b) => a.d - b.d);
-                
-                window.mostrandoApenasProximas = true;
-                btn.innerHTML = "<i>❌</i>Parar"; 
-                btn.style.color = "var(--danger)";
-                renderizarInterface(proximas, true);
-            }, () => window.pararRadar(), {enableHighAccuracy: true});
+            if (!navigator.geolocation) {
+                mostrarToast("Erro: Seu dispositivo não suporta GPS.");
+                window.pararRadar();
+                return;
+            }
+
+            window.radarWatchId = navigator.geolocation.watchPosition(
+                (pos) => {
+                    const { latitude, longitude } = pos.coords;
+                    
+                    const proximas = window.redesEmMemoria.map(r => {
+                        if(!r.lat || r.lat === 'null' || r.lat === 'undefined' || r.lat === '') {
+                            return {...r, d: 999999};
+                        }
+                        
+                        const d = calcularDistancia(latitude, longitude, parseFloat(r.lat), parseFloat(r.lng));
+                        return {...r, d};
+                    })
+                    .filter(r => r.d <= 150) 
+                    .sort((a,b) => a.d - b.d); 
+                    
+                    window.mostrandoApenasProximas = true;
+                    btn.innerHTML = "<i>❌</i>Parar"; 
+                    btn.style.color = "var(--danger)";
+                    
+                    renderizarInterface(proximas, true);
+                    
+                    if(proximas.length === 0) {
+                        mostrarToast("Nenhuma rede num raio de 150m.");
+                    }
+                }, 
+                (err) => {
+                    mostrarToast("Buscando sinal do GPS... vá para um local aberto.");
+                }, 
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
         };
 
         window.editarPeloMapaGlobal = function(id, ssid, lat, lng) {
