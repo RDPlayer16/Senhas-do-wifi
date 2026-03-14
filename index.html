@@ -47,15 +47,13 @@
         .btn-add { background: var(--success); } .btn-scan { background: var(--scanner); } .btn-geo { background: var(--geo); } .btn-delete { background: var(--danger); color: white; }
         .info-status { font-size: 13px; margin-left: auto; display: flex; align-items: center; gap: 5px; color: var(--text-main); }
         
-        /* Aumentei o padding inferior para os cards não ficarem atrás da nova barra */
-        .content-area { padding: 20px; padding-bottom: 90px; } 
-        #output { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 20px; max-width: 1200px; margin: 0 auto; }
+        .content-area { padding: 20px; padding-bottom: 90px; display: flex; flex-direction: column; min-height: calc(100vh - 180px); } 
+        #output { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 20px; max-width: 1200px; margin: 0 auto; width: 100%; }
         
         .card { background: var(--card-bg); padding: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); border: 1px solid var(--border); text-align: center; display: flex; flex-direction: column; align-items: center; position: relative; min-height: 250px; }
         .badge-geo { position: absolute; top: 10px; right: 10px; background: rgba(14, 165, 233, 0.1); color: var(--geo); font-size: 10px; padding: 3px 6px; border-radius: 10px; font-weight: bold; border: 1px solid rgba(14, 165, 233, 0.3); }
         .card h3 { margin: 5px 0; font-size: 16px; word-break: break-all; width: 85%; color: var(--text-main); }
         
-        /* Melhoria 2: Layout de Ocultar Senha */
         .pwd-container { display: flex; align-items: center; justify-content: space-between; gap: 8px; background: var(--bg-color); padding: 2px 8px 2px 12px; border-radius: 6px; border: 1px solid var(--border); margin: 5px 0; width: 85%; }
         .pwd-text { font-size: 14px; color: var(--text-muted); font-family: monospace; letter-spacing: 3px; flex-grow: 1; text-align: center; overflow: hidden; text-overflow: ellipsis; }
         .btn-eye { background: transparent !important; color: var(--text-muted) !important; padding: 4px; box-shadow: none; font-size: 16px; min-width: auto; }
@@ -65,17 +63,18 @@
         .btn-mini { padding: 8px; font-size: 12px; border-radius: 6px; width: 100%; box-sizing: border-box; font-weight: bold; }
         .col-span-2 { grid-column: span 2; }
         
-        /* Melhoria 3: Tela de Vazio */
         .empty-state { width: 100%; grid-column: 1 / -1; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 60px 20px; text-align: center; color: var(--text-muted); }
         .empty-icon { font-size: 50px; margin-bottom: 10px; opacity: 0.7; }
         .empty-state h3 { margin: 5px 0; font-size: 18px; color: var(--text-main); }
 
-        /* Melhoria 1: Barra de Navegação Inferior */
         .bottom-nav { position: fixed; bottom: 0; left: 0; width: 100%; background: var(--header-bg); border-top: 1px solid var(--border); display: flex; justify-content: space-around; align-items: center; z-index: 100; backdrop-filter: blur(8px); padding-bottom: env(safe-area-inset-bottom, 5px); }
         .bottom-nav button { flex-direction: column; background: transparent; color: var(--text-muted); font-size: 11px; padding: 10px 5px; border-radius: 0; gap: 4px; box-shadow: none; font-weight: 600; flex-grow: 1; }
         .bottom-nav button i { font-size: 22px; font-style: normal; margin-bottom: 2px; }
         .bottom-nav button:hover, .bottom-nav button:active { background: rgba(0,0,0,0.05); color: var(--primary); }
         @media (prefers-color-scheme: dark) { .bottom-nav button:hover, .bottom-nav button:active { background: rgba(255,255,255,0.05); } }
+
+        /* Estilo da Marca D'água */
+        .app-watermark { text-align: center; font-size: 11px; color: var(--text-muted); margin-top: auto; padding-top: 40px; opacity: 0.5; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; }
 
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; justify-content: center; align-items: center; backdrop-filter: blur(3px); }
         .modal-content { background: var(--modal-bg); color: var(--text-main); padding: 20px; border-radius: 12px; width: 90%; max-width: 400px; display: flex; flex-direction: column; gap: 12px; max-height: 90vh; overflow-y: auto; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
@@ -91,6 +90,8 @@
         
         #reader { width: 100%; border-radius: 8px; overflow: hidden; background: #000; }
         .leaflet-control-layers { background: var(--modal-bg) !important; color: var(--text-main) !important; }
+        
+        .leaflet-popup-content { margin: 10px 15px; }
     </style>
 </head>
 <body>
@@ -99,7 +100,7 @@
         <div class="container header-content">
             <div class="header-top">
                 <h1 onclick="abrirModalAvancado()">📶 Wi-Fi Manager Pro</h1>
-                </div>
+            </div>
             <div class="controles">
                 <button onclick="exportarTXT()" style="padding: 10px; flex-grow: 0;">💾 TXT</button>
                 <button onclick="exportarPDF()" style="padding: 10px; flex-grow: 0;">📄 PDF</button>
@@ -109,7 +110,10 @@
         </div>
     </div>
 
-    <div class="content-area"><div id="output"></div></div>
+    <div class="content-area">
+        <div id="output"></div>
+        <div class="app-watermark">⚡ Wi-Fi Manager Pro • Desenvolvido por Raí Dias</div>
+    </div>
     
     <div id="toast">Aviso!</div>
     <div id="toast-undo">
@@ -576,6 +580,13 @@
             }, () => window.pararRadar(), {enableHighAccuracy: true});
         };
 
+        window.editarPeloMapaGlobal = function(id, ssid, lat, lng) {
+            window.fecharMapaGlobal();
+            setTimeout(() => {
+                window.abrirMapaParaRede(id, ssid, lat, lng);
+            }, 300);
+        };
+
         window.abrirMapaGlobal = function() {
             if (typeof L === 'undefined') { alert("Conecte-se à internet para carregar o mapa."); return; }
             document.getElementById('modalMapaGlobal').style.display = 'flex';
@@ -595,7 +606,18 @@
                 redesComGeo.forEach(r => {
                     const lat = parseFloat(r.lat); const lng = parseFloat(r.lng);
                     const marker = L.marker([lat, lng]).addTo(mapGlobal);
-                    marker.bindPopup(`<b>${r.ssid}</b>`);
+                    
+                    const popupContent = `
+                        <div style="text-align: center; min-width: 130px; font-family: sans-serif;">
+                            <h4 style="margin: 0 0 5px 0; color: var(--primary); font-size: 15px; word-break: break-all;">${r.ssid}</h4>
+                            <p style="margin: 0 0 10px 0; font-size: 13px; background: #f0f0f0; padding: 4px; border-radius: 4px; color: #333; font-family: monospace; letter-spacing: 1px;">🔑 ${r.senha}</p>
+                            <button onclick="editarPeloMapaGlobal('${r.id}', '${r.ssid}', '${r.lat}', '${r.lng}')" 
+                                    style="width: 100%; padding: 6px; font-size: 12px; background: var(--geo); color: white; border-radius: 4px; border: none; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 5px;">
+                                📍 Mover Local
+                            </button>
+                        </div>
+                    `;
+                    marker.bindPopup(popupContent);
                     bounds.extend([lat, lng]);
                 });
                 setTimeout(() => mapGlobal.fitBounds(bounds, { padding: [30, 30], maxZoom: 18 }), 300);
@@ -685,7 +707,6 @@
             mostrarToast("Coordenadas salvas!"); fecharMapa();
         };
 
-        // --- NOVA FUNÇÃO DE MOSTRAR/OCULTAR SENHA (OLHINHO) ---
         window.togglePassword = function(btn) {
             const spanText = btn.previousElementSibling;
             if (spanText.innerText === '••••••••') {
@@ -703,7 +724,6 @@
             const out = document.getElementById('output');
             out.innerHTML = '';
 
-            // TELA DE VAZIO (EMPTY STATE)
             if (lista.length === 0) {
                 out.innerHTML = `
                     <div class="empty-state" id="empty-search-msg">
@@ -718,6 +738,7 @@
                 const div = document.createElement('div');
                 div.className = 'card'; div.dataset.nomeRede = r.ssid.toLowerCase();
                 const dist = radar && r.d < 1000 ? `<div class="badge-geo" style="background:rgba(16, 185, 129, 0.1); color:var(--success); border-color:rgba(16, 185, 129, 0.3);">A ${Math.round(r.d)}m</div>` : (r.lat ? `<div class="badge-geo">📍 Local Salvo</div>` : '');
+                
                 const btnMapa = r.lat ? "🗺️ Editar Local" : "📍 Add Local";
                 const corMapa = r.lat ? "var(--geo)" : "#6366F1";
 
@@ -731,7 +752,7 @@
                     <div class="qrcode" data-ssid="${r.ssid}" data-pass="${r.senha}">Gerando...</div>
                     <div class="card-actions">
                         <button class="btn-mini" style="background:var(--btn-copy-bg);color:var(--text-main)" onclick="copy('${r.senha}')">📋 Copiar</button>
-                        <button class="btn-mini" style="background:var(--success);color:#fff" onclick="compartilharRede('${r.ssid}', '${r.senha}')">🔗 Share</button>
+                        <button class="btn-mini" style="background:var(--success);color:#fff" onclick="compartilharRede('${r.ssid}', '${r.senha}')">🔗 Compartilhar</button>
                         <button class="btn-mini btn-delete" onclick="window.iniciarExclusao('${r.id}','${r.ssid}')">🗑️ Excluir</button>
                         <button class="btn-mini" style="background:${corMapa}; color:#fff;" onclick="window.abrirMapaParaRede('${r.id}','${r.ssid}','${r.lat}','${r.lng}')">${btnMapa}</button>
                     </div>`;
@@ -740,7 +761,6 @@
             });
         }
 
-        // TELA DE VAZIO NA PESQUISA
         function filtrar() { 
             const v = document.getElementById('searchInput').value.toLowerCase(); 
             let countVisible = 0;
