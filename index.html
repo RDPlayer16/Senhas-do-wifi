@@ -73,7 +73,6 @@
         .bottom-nav button:hover, .bottom-nav button:active { background: rgba(0,0,0,0.05); color: var(--primary); }
         @media (prefers-color-scheme: dark) { .bottom-nav button:hover, .bottom-nav button:active { background: rgba(255,255,255,0.05); } }
 
-        /* Estilo da Marca D'água */
         .app-watermark { text-align: center; font-size: 11px; color: var(--text-muted); margin-top: auto; padding-top: 40px; opacity: 0.5; font-weight: 600; letter-spacing: 0.5px; text-transform: uppercase; }
 
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; justify-content: center; align-items: center; backdrop-filter: blur(3px); }
@@ -112,7 +111,7 @@
 
     <div class="content-area">
         <div id="output"></div>
-        <div class="app-watermark">⚡ Wi-Fi Manager Pro • Desenvolvido por Raí Dias</div>
+        <div class="app-watermark">⚡ Wi-Fi Manager Pro • Desenvolvido por Você</div>
     </div>
     
     <div id="toast">Aviso!</div>
@@ -290,6 +289,7 @@
 
         window.addEventListener('offline', () => { window.atualizarContador('offline'); });
 
+        // --- PROTEÇÃO DE QR CODE EM SEGUNDO PLANO ---
         window.addEventListener('DOMContentLoaded', async () => {
             try {
                 const dadosLocal = await window.lerDoIndexedDB();
@@ -311,7 +311,8 @@
             if (typeof QRCode !== 'undefined') {
                 window.observer = new IntersectionObserver((entries) => {
                     entries.forEach(entry => {
-                        if (entry.isIntersecting && !entry.target.dataset.rendered) {
+                        // A TRAVA: Só gera o QR code se o elemento estiver visível na tela (offsetWidth > 0)
+                        if (entry.isIntersecting && !entry.target.dataset.rendered && entry.target.offsetWidth > 0) {
                             entry.target.innerHTML = "";
                             new QRCode(entry.target, { 
                                 text: unescape(encodeURIComponent(`WIFI:S:${entry.target.dataset.ssid};T:WPA;P:${entry.target.dataset.pass};;`)), 
@@ -323,6 +324,18 @@
                         }
                     });
                 }, { rootMargin: '100px' });
+            }
+        });
+
+        // Quando o app volta de segundo plano, força os QR Codes que falharam a renderizarem
+        document.addEventListener("visibilitychange", () => {
+            if (document.visibilityState === "visible") {
+                document.querySelectorAll('.qrcode:not([data-rendered="true"])').forEach(el => {
+                    if(window.observer) {
+                        window.observer.unobserve(el);
+                        window.observer.observe(el);
+                    }
+                });
             }
         });
 
@@ -550,7 +563,7 @@
             }
         };
 
-        // --- CÓDIGO DO RADAR CORRIGIDO (IGNORA NULL E NÃO TRAVA) ---
+        // --- RADAR TOTALMENTE BLINDADO CONTRA TRAVAMENTOS ---
         window.pararRadar = function(veioDoCopy = false) {
             window.mostrandoApenasProximas = false;
             if (window.radarWatchId) { 
@@ -579,35 +592,40 @@
                 return;
             }
 
-            window.radarWatchId = navigator.geolocation.watchPosition(
+            const aplicarFiltro = (pos) => {
+                const { latitude, longitude } = pos.coords;
+                const proximas = window.redesEmMemoria.map(r => {
+                    if(!r.lat || r.lat === 'null' || r.lat === 'undefined' || r.lat === '') return {...r, d: 999999};
+                    return {...r, d: calcularDistancia(latitude, longitude, parseFloat(r.lat), parseFloat(r.lng))};
+                }).filter(r => r.d <= 150).sort((a,b) => a.d - b.d);
+
+                window.mostrandoApenasProximas = true;
+                btn.innerHTML = "<i>❌</i>Parar"; 
+                btn.style.color = "var(--danger)";
+                renderizarInterface(proximas, true);
+                if(proximas.length === 0) mostrarToast("Nenhuma rede num raio de 150m.");
+            };
+
+            // Dupla tentativa (Fallback de GPS) para não travar o Radar
+            navigator.geolocation.getCurrentPosition(
                 (pos) => {
-                    const { latitude, longitude } = pos.coords;
-                    
-                    const proximas = window.redesEmMemoria.map(r => {
-                        if(!r.lat || r.lat === 'null' || r.lat === 'undefined' || r.lat === '') {
-                            return {...r, d: 999999};
-                        }
-                        
-                        const d = calcularDistancia(latitude, longitude, parseFloat(r.lat), parseFloat(r.lng));
-                        return {...r, d};
-                    })
-                    .filter(r => r.d <= 150) 
-                    .sort((a,b) => a.d - b.d); 
-                    
-                    window.mostrandoApenasProximas = true;
-                    btn.innerHTML = "<i>❌</i>Parar"; 
-                    btn.style.color = "var(--danger)";
-                    
-                    renderizarInterface(proximas, true);
-                    
-                    if(proximas.length === 0) {
-                        mostrarToast("Nenhuma rede num raio de 150m.");
-                    }
-                }, 
+                    aplicarFiltro(pos);
+                    window.radarWatchId = navigator.geolocation.watchPosition(aplicarFiltro, null, {enableHighAccuracy: true});
+                },
                 (err) => {
-                    mostrarToast("Buscando sinal do GPS... vá para um local aberto.");
-                }, 
-                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+                    navigator.geolocation.getCurrentPosition(
+                        (posBaixa) => {
+                            aplicarFiltro(posBaixa);
+                            window.radarWatchId = navigator.geolocation.watchPosition(aplicarFiltro, null, {enableHighAccuracy: false});
+                        },
+                        (errBaixa) => {
+                            window.pararRadar();
+                            mostrarToast("Sinal de GPS não encontrado. Ligue a localização.");
+                        },
+                        { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
+                    );
+                },
+                { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 }
             );
         };
 
