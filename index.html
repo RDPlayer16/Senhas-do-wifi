@@ -93,8 +93,7 @@
                 </div>
             </div>
             <div class="controles">
-                <button onclick="exportarTXT()">💾 TXT</button>
-                <button onclick="exportarPDF()">📄 PDF</button>
+                <button onclick="abrirModalExportar()">📤 Exportar</button>
                 <button class="btn-geo" onclick="abrirMapaGlobal()" style="background:#8B5CF6;">🗺️ Mapa Geral</button>
                 <input type="text" id="searchInput" placeholder="🔍 Pesquisar..." onkeyup="filtrar()">
                 <div id="statusContador" class="info-status">Carregando interface...</div>
@@ -111,6 +110,18 @@
     <div id="toast-undo">
         <span id="toast-undo-text">Rede apagada.</span>
         <button class="btn-undo" onclick="desfazerExclusao()">Desfazer</button>
+    </div>
+
+    <div id="modalExportar" class="modal-overlay">
+        <div class="modal-content" style="max-width: 350px;">
+            <h3 style="margin-bottom: 5px; text-align: center;">📤 Exportar Senhas</h3>
+            <p style="font-size:13px; color:var(--text-muted); text-align: center; margin-bottom: 15px;">Escolha o formato para baixar seu backup:</p>
+            <button onclick="exportarTXT(); fecharModalExportar();" style="background: var(--primary); margin-bottom: 8px;">💾 Arquivo de Texto (.TXT)</button>
+            <button onclick="exportarPDF(); fecharModalExportar();" style="background: #E11D48;">📄 Arquivo PDF (.PDF)</button>
+            <div style="display:flex; justify-content: center; margin-top:10px;">
+                <button style="background:var(--text-muted); width: 100%;" onclick="fecharModalExportar()">Cancelar</button>
+            </div>
+        </div>
     </div>
 
     <div id="modalMapa" class="modal-overlay">
@@ -484,6 +495,14 @@
                 mostrarToast(msg);
             } else { mostrarToast("Nenhuma rede nova ou válida encontrada."); }
             fecharModalAvancado();
+        };
+
+        window.abrirModalExportar = function() {
+            document.getElementById('modalExportar').style.display = 'flex';
+        };
+
+        window.fecharModalExportar = function() {
+            document.getElementById('modalExportar').style.display = 'none';
         };
 
         window.exportarTXT = function() {
