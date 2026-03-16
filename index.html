@@ -28,7 +28,7 @@
             }
         }
 
-        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-color); color: var(--text-main); margin: 0; padding: 0; transition: background 0.3s, color 0.3s; }
+        body { font-family: 'Segoe UI', system-ui, sans-serif; background: var(--bg-color); color: var(--text-main); margin: 0; padding: 0; transition: background 0.3s, color 0.3s; display: flex; flex-direction: column; min-height: 100vh; }
         .sticky-header { position: sticky; top: 0; background: var(--header-bg); border-bottom: 1px solid var(--border); padding: 15px 0; z-index: 100; box-shadow: 0 2px 10px rgba(0,0,0,0.05); backdrop-filter: blur(5px); }
         .container { max-width: 1200px; margin: 0 auto; padding: 0 20px; }
         .header-content { display: flex; flex-direction: column; gap: 12px; }
@@ -43,7 +43,7 @@
         button:disabled { opacity: 0.6; cursor: not-allowed; }
         .btn-add { background: var(--success); } .btn-scan { background: var(--scanner); } .btn-geo { background: var(--geo); } .btn-delete { background: var(--danger); color: white; }
         .info-status { font-size: 13px; margin-left: auto; display: flex; align-items: center; gap: 5px; color: var(--text-main); }
-        .content-area { padding: 20px; }
+        .content-area { padding: 20px; flex-grow: 1; }
         #output { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 20px; max-width: 1200px; margin: 0 auto; }
         
         .card { background: var(--card-bg); padding: 15px; border-radius: 10px; box-shadow: 0 2px 5px rgba(0,0,0,0.05); border: 1px solid var(--border); text-align: center; display: flex; flex-direction: column; align-items: center; position: relative; min-height: 250px; }
@@ -77,6 +77,8 @@
         .divider::before, .divider::after { content: ''; flex: 1; border-bottom: 1px solid var(--border); }
         .divider:not(:empty)::before { margin-right: .5em; }
         .divider:not(:empty)::after { margin-left: .5em; }
+
+        .watermark { text-align: center; padding: 20px; margin-top: auto; font-size: 13px; font-weight: bold; color: var(--text-muted); letter-spacing: 0.5px; }
     </style>
 </head>
 <body>
@@ -101,6 +103,8 @@
     </div>
 
     <div class="content-area"><div id="output"></div></div>
+
+    <div class="watermark">Desenvolvido por Raí Dias</div>
     
     <div id="toast">Aviso!</div>
     
@@ -868,8 +872,6 @@
             }
         }
 
-        // --- SISTEMA DE QR CODE CORRIGIDO (VERSÃO 2.6) ---
-        
         window.processarTextoQR = function(text) {
             if (text.toUpperCase().startsWith("WIFI:")) {
                 let s = "", p = ""; const pts = text.substring(5).split(";");
@@ -893,7 +895,6 @@
             fecharModal(); 
             document.getElementById('modalScanner').style.display = 'flex';
             
-            // Aqui passamos o parâmetro supportedScanTypes: [0] para DESATIVAR a opção em inglês
             window.scannerInstancia = new Html5QrcodeScanner("reader", { 
                 fps: 10, 
                 qrbox: {width: 250, height: 250},
@@ -914,7 +915,6 @@
             if (typeof Html5Qrcode === 'undefined') { alert("Conecte-se à internet para carregar o escâner."); return; }
             mostrarToast("Analisando imagem...");
 
-            // Criamos uma tela invisível no fundo só pro leitor desenhar a imagem e não quebrar
             const tempDiv = document.createElement("div");
             tempDiv.id = "temp-qr-reader";
             tempDiv.style.position = "absolute";
@@ -935,7 +935,7 @@
                 document.body.removeChild(tempDiv);
             });
 
-            e.target.value = ''; // Limpa para permitir subir a mesma foto de novo, se precisar
+            e.target.value = ''; 
         };
 
         function fecharScanner() { if (window.scannerInstancia) { window.scannerInstancia.clear(); } document.getElementById('modalScanner').style.display = 'none'; }
