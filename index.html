@@ -577,7 +577,7 @@
             }, () => window.pararRadar(), {enableHighAccuracy: true});
         };
 
-        // --- MAPAS (COM MODIFICAÇÕES DA VERSÃO 2.2) ---
+        // --- MAPAS (COM MODIFICAÇÕES DA VERSÃO 2.3) ---
         window.abrirMapaGlobal = function() {
             if (typeof L === 'undefined') { alert("Conecte-se à internet para carregar o mapa."); return; }
             document.getElementById('modalMapaGlobal').style.display = 'flex';
@@ -608,12 +608,13 @@
                     const lat = parseFloat(r.lat); const lng = parseFloat(r.lng);
                     const marker = L.marker([lat, lng]).addTo(mapGlobal);
                     
-                    // VERSÃO 2.2: Popup com botão de copiar senha
+                    // VERSÃO 2.3: Popup com botão de copiar senha e NOVO botão para Editar Localização
                     const popupHTML = `
                         <div style="text-align: center; min-width: 140px; padding: 5px;">
                             <b style="font-size: 15px; color: var(--primary); display: block; margin-bottom: 5px;">${r.ssid}</b>
                             <span style="font-size: 13px; color: #555; display: block; margin-bottom: 12px; background: #f0f0f0; padding: 4px; border-radius: 4px;">${r.senha}</span>
-                            <button onclick="copy('${r.senha}')" style="background: var(--success); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">📋 Copiar Senha</button>
+                            <button onclick="copy('${r.senha}')" style="background: var(--success); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 8px;">📋 Copiar Senha</button>
+                            <button onclick="fecharMapaGlobal(); abrirMapaParaRede('${r.id}', '${r.ssid}', '${r.lat}', '${r.lng}')" style="background: var(--geo); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">🗺️ Editar Local</button>
                         </div>
                     `;
                     marker.bindPopup(popupHTML);
@@ -624,7 +625,6 @@
             setTimeout(() => mapGlobal.invalidateSize(), 400);
         };
 
-        // NOVA FUNÇÃO DA VERSÃO 2.2: Onde estou no Mapa Geral
         window.mostrarMinhaLocalizacaoNoMapa = function() {
             if (!mapGlobal) return;
             mostrarToast("📍 Buscando sua localização...");
@@ -634,14 +634,11 @@
                     const lat = pos.coords.latitude;
                     const lng = pos.coords.longitude;
 
-                    // Foca a câmera no usuário
                     mapGlobal.setView([lat, lng], 17);
 
-                    // Remove marcações anteriores para não duplicar
                     if (window.marcadorUsuarioGlobal) mapGlobal.removeLayer(window.marcadorUsuarioGlobal);
                     if (window.circuloUsuarioGlobal) mapGlobal.removeLayer(window.circuloUsuarioGlobal);
 
-                    // Ícone customizado pro usuário
                     const iconeUsuario = L.divIcon({
                         className: 'user-icon',
                         html: '<div style="background:#EF4444; width:16px; height:16px; border-radius:50%; border:3px solid #fff; box-shadow:0 0 8px rgba(0,0,0,0.6);"></div>',
@@ -652,7 +649,6 @@
                     window.marcadorUsuarioGlobal = L.marker([lat, lng], { icon: iconeUsuario }).addTo(mapGlobal);
                     window.marcadorUsuarioGlobal.bindPopup("<div style='text-align:center;'><b>📍 Você está aqui!</b><br><span style='font-size:12px;color:#666;'>Veja as redes ao redor</span></div>").openPopup();
 
-                    // Circulo de 150 metros
                     window.circuloUsuarioGlobal = L.circle([lat, lng], {
                         color: '#EF4444',
                         fillColor: '#EF4444',
