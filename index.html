@@ -127,6 +127,7 @@
         <div class="modal-content" style="max-width: 800px; width: 95%; height: 85vh;">
             <h3>🗺️ Todas as suas Redes</h3>
             <p style="font-size:12px; color:var(--text-muted); margin-top:-10px;">Use o ícone no canto direito do mapa para trocar entre Padrão e Satélite.</p>
+            <button class="btn-geo" onclick="mostrarMinhaLocalizacaoNoMapa()" style="margin-bottom: 10px; width: 100%; background: #EF4444;">📍 Onde estou? (Ver Redes Próximas)</button>
             <div id="mapa-global-container" style="flex-grow: 1; width: 100%; border-radius: 8px; border: 1px solid var(--border); min-height: 300px;"></div>
             <div style="display:flex; justify-content: flex-end; margin-top:10px;">
                 <button style="background:var(--text-muted)" onclick="fecharMapaGlobal()">Fechar Mapa</button>
@@ -180,6 +181,10 @@
 
         let map, mapMarker, redeEditandoMapa;
         let mapGlobal; 
+        
+        // Variaveis globais pro marcador do usuario no mapa geral
+        window.marcadorUsuarioGlobal = null;
+        window.circuloUsuarioGlobal = null;
 
         // URLs dos Mapas
         const TILE_SATELLITE = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
@@ -249,7 +254,6 @@
         window.sincronizarPendentes = async function() {
             if (typeof window.firebasePush !== 'function') return;
 
-            // 1. Processar Exclusões Offline
             let filaExclusao = JSON.parse(localStorage.getItem('wifi_pro_deletes_v1') || '[]');
             if (filaExclusao.length > 0) {
                 filaExclusao.forEach(id => {
@@ -258,7 +262,6 @@
                 localStorage.removeItem('wifi_pro_deletes_v1');
             }
 
-            // 2. Processar Atualizações de GPS Offline
             let filaUpdate = JSON.parse(localStorage.getItem('wifi_pro_updates_v1') || '{}');
             if (Object.keys(filaUpdate).length > 0) {
                 Object.keys(filaUpdate).forEach(id => {
@@ -267,7 +270,6 @@
                 localStorage.removeItem('wifi_pro_updates_v1');
             }
 
-            // 3. Processar Criação de Novas Redes Offline
             const pendentes = window.redesEmMemoria.filter(r => String(r.id).startsWith('local_'));
             if (pendentes.length > 0) {
                 window.redesEmMemoria = window.redesEmMemoria.filter(r => !String(r.id).startsWith('local_'));
@@ -575,7 +577,7 @@
             }, () => window.pararRadar(), {enableHighAccuracy: true});
         };
 
-        // --- MAPAS ---
+        // --- MAPAS (COM MODIFICAÇÕES DA VERSÃO 2.2) ---
         window.abrirMapaGlobal = function() {
             if (typeof L === 'undefined') { alert("Conecte-se à internet para carregar o mapa."); return; }
             document.getElementById('modalMapaGlobal').style.display = 'flex';
@@ -583,6 +585,8 @@
             if(mapGlobal) { 
                 mapGlobal.remove(); 
                 document.getElementById('mapa-global-container').innerHTML = '';
+                window.marcadorUsuarioGlobal = null;
+                window.circuloUsuarioGlobal = null;
             }
             
             mapGlobal = L.map('mapa-global-container', { center: [-15, -50], zoom: 4 }); 
@@ -603,21 +607,83 @@
                 redesComGeo.forEach(r => {
                     const lat = parseFloat(r.lat); const lng = parseFloat(r.lng);
                     const marker = L.marker([lat, lng]).addTo(mapGlobal);
-                    marker.bindPopup(`<b>${r.ssid}</b><br>Senha: ${r.senha}`);
+                    
+                    // VERSÃO 2.2: Popup com botão de copiar senha
+                    const popupHTML = `
+                        <div style="text-align: center; min-width: 140px; padding: 5px;">
+                            <b style="font-size: 15px; color: var(--primary); display: block; margin-bottom: 5px;">${r.ssid}</b>
+                            <span style="font-size: 13px; color: #555; display: block; margin-bottom: 12px; background: #f0f0f0; padding: 4px; border-radius: 4px;">${r.senha}</span>
+                            <button onclick="copy('${r.senha}')" style="background: var(--success); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">📋 Copiar Senha</button>
+                        </div>
+                    `;
+                    marker.bindPopup(popupHTML);
                     bounds.extend([lat, lng]);
                 });
                 setTimeout(() => mapGlobal.fitBounds(bounds, { padding: [30, 30], maxZoom: 18 }), 300);
             }
             setTimeout(() => mapGlobal.invalidateSize(), 400);
         };
-        window.fecharMapaGlobal = function() { document.getElementById('modalMapaGlobal').style.display = 'none'; };
+
+        // NOVA FUNÇÃO DA VERSÃO 2.2: Onde estou no Mapa Geral
+        window.mostrarMinhaLocalizacaoNoMapa = function() {
+            if (!mapGlobal) return;
+            mostrarToast("📍 Buscando sua localização...");
+            
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    const lat = pos.coords.latitude;
+                    const lng = pos.coords.longitude;
+
+                    // Foca a câmera no usuário
+                    mapGlobal.setView([lat, lng], 17);
+
+                    // Remove marcações anteriores para não duplicar
+                    if (window.marcadorUsuarioGlobal) mapGlobal.removeLayer(window.marcadorUsuarioGlobal);
+                    if (window.circuloUsuarioGlobal) mapGlobal.removeLayer(window.circuloUsuarioGlobal);
+
+                    // Ícone customizado pro usuário
+                    const iconeUsuario = L.divIcon({
+                        className: 'user-icon',
+                        html: '<div style="background:#EF4444; width:16px; height:16px; border-radius:50%; border:3px solid #fff; box-shadow:0 0 8px rgba(0,0,0,0.6);"></div>',
+                        iconSize: [22, 22],
+                        iconAnchor: [11, 11]
+                    });
+
+                    window.marcadorUsuarioGlobal = L.marker([lat, lng], { icon: iconeUsuario }).addTo(mapGlobal);
+                    window.marcadorUsuarioGlobal.bindPopup("<div style='text-align:center;'><b>📍 Você está aqui!</b><br><span style='font-size:12px;color:#666;'>Veja as redes ao redor</span></div>").openPopup();
+
+                    // Circulo de 150 metros
+                    window.circuloUsuarioGlobal = L.circle([lat, lng], {
+                        color: '#EF4444',
+                        fillColor: '#EF4444',
+                        fillOpacity: 0.1,
+                        radius: 150
+                    }).addTo(mapGlobal);
+                    
+                    mostrarToast("GPS Encontrado com Sucesso!");
+                },
+                (err) => { alert("Não foi possível acessar o GPS. Verifique se a localização está ativada no celular/navegador."); },
+                { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+            );
+        };
+
+        window.fecharMapaGlobal = function() { 
+            document.getElementById('modalMapaGlobal').style.display = 'none'; 
+            if (window.marcadorUsuarioGlobal && mapGlobal) {
+                mapGlobal.removeLayer(window.marcadorUsuarioGlobal);
+                window.marcadorUsuarioGlobal = null;
+            }
+            if (window.circuloUsuarioGlobal && mapGlobal) {
+                mapGlobal.removeLayer(window.circuloUsuarioGlobal);
+                window.circuloUsuarioGlobal = null;
+            }
+        };
 
         window.abrirMapaParaRede = function(id, ssid, lat, lng) {
             if (typeof L === 'undefined') { alert("Conecte-se à internet para carregar o mapa."); return; }
             document.getElementById('modalMapa').style.display = 'flex';
             document.getElementById('tituloModalMapa').innerText = `📍 ${ssid}`;
             
-            // Limpa o campo de coordenadas sempre que abrir o modal
             document.getElementById('inputCoordenadasMapa').value = '';
 
             redeEditandoMapa = { id };
@@ -656,12 +722,10 @@
             setTimeout(() => { if(map) map.invalidateSize(); }, 300);
         };
 
-        // --- NOVA FUNÇÃO: LER COORDENADAS COLADAS ---
         window.aplicarCoordenadasNoMapa = function() {
             const input = document.getElementById('inputCoordenadasMapa').value;
             if (!input.trim()) return;
 
-            // Divide pelo separador (vírgula)
             const partes = input.split(',');
             if (partes.length >= 2) {
                 const lat = parseFloat(partes[0].trim());
