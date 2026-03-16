@@ -72,6 +72,11 @@
         
         #reader { width: 100%; border-radius: 8px; overflow: hidden; background: #000; }
         .leaflet-control-layers { background: var(--modal-bg) !important; color: var(--text-main) !important; }
+        
+        .divider { display: flex; align-items: center; text-align: center; margin: 5px 0; color: var(--text-muted); font-size: 12px; font-weight: bold; }
+        .divider::before, .divider::after { content: ''; flex: 1; border-bottom: 1px solid var(--border); }
+        .divider:not(:empty)::before { margin-right: .5em; }
+        .divider:not(:empty)::after { margin-left: .5em; }
     </style>
 </head>
 <body>
@@ -82,8 +87,7 @@
                 <h1 onclick="abrirModalAvancado()">📶 Wi-Fi Manager Pro</h1>
                 <div class="botoes-topo">
                     <button class="btn-geo" onclick="buscarSenhasPorPerto()" id="btnRadar">📍 Por Perto</button>
-                    <button class="btn-scan" onclick="abrirScanner()">📷 Escanear</button>
-                    <button class="btn-add" onclick="abrirModal()">➕ Nova</button>
+                    <button class="btn-add" onclick="abrirModal()">➕ Nova Rede</button>
                 </div>
             </div>
             <div class="controles">
@@ -149,14 +153,27 @@
 
     <div id="modalNovaRede" class="modal-overlay">
         <div class="modal-content">
-            <h3>Nova Rede Wi-Fi</h3>
+            <h3 style="margin-bottom: 5px;">➕ Nova Rede Wi-Fi</h3>
+            
+            <div style="display:flex; gap: 8px; margin-bottom: 5px;">
+                <button class="btn-scan" style="flex: 1; font-size: 13px;" onclick="abrirScannerCamera()">📷 Escanear QR</button>
+                <button class="btn-scan" style="flex: 1; font-size: 13px; background: #8B5CF6;" onclick="document.getElementById('qrFileInput').click()">🖼️ QR da Galeria</button>
+            </div>
+            
+            <input type="file" id="qrFileInput" accept="image/*" style="display:none;" onchange="escanearImagemQR(event)">
+            
+            <div class="divider">OU DIGITE MANUALMENTE</div>
+
             <input type="text" id="novoSSID" placeholder="Nome da Rede (SSID)" oninput="checarDuplicadoModal()">
             <input type="text" id="novaSenha" placeholder="Senha" oninput="checarDuplicadoModal()">
+            
             <label style="font-size: 14px; display: flex; align-items: center; gap: 8px; cursor: pointer;" id="containerCheckLocalizacao">
                 <input type="checkbox" id="checkLocalizacao" checked style="width: 18px; height: 18px;"> Usar GPS (Alta Precisão)
             </label>
+            
             <div id="msgDuplicadoModal" class="aviso-duplicado"></div>
             <button id="btnAdicionarGeo" class="btn-geo" style="display:none;" onclick="atualizarGeoRedeExistente()">📍 Adicionar GPS Agora</button>
+            
             <div style="display:flex; gap:10px; justify-content: flex-end; margin-top:10px;">
                 <button style="background:var(--text-muted)" onclick="fecharModal()">Cancelar</button>
                 <button id="btnSalvarModal" class="btn-add" onclick="salvarRedeLocal()">Salvar</button>
@@ -698,7 +715,6 @@
                 "Satélite (Visual)": satLayer
             }).addTo(map);
             
-            // VERSÃO 2.4: Adicionado { draggable: true } aos marcadores editáveis
             if(z === 18) {
                 mapMarker = L.marker([l, g], { draggable: true }).addTo(map);
             }
@@ -726,7 +742,6 @@
                         if (mapMarker) {
                             mapMarker.setLatLng([lat, lng]);
                         } else {
-                            // VERSÃO 2.4
                             mapMarker = L.marker([lat, lng], { draggable: true }).addTo(map);
                         }
                         mostrarToast("Alvo atualizado!");
@@ -753,7 +768,7 @@
                     const { latitude, longitude } = pos.coords;
                     map.setView([latitude, longitude], 18); 
                     if(mapMarker) { mapMarker.setLatLng([latitude, longitude]); } 
-                    else { mapMarker = L.marker([latitude, longitude], { draggable: true }).addTo(map); } // VERSÃO 2.4
+                    else { mapMarker = L.marker([latitude, longitude], { draggable: true }).addTo(map); } 
                     mostrarToast("GPS de Alta Precisão encontrado!");
                     btn.innerText = textoOriginal; 
                     btn.disabled = false;
@@ -764,7 +779,7 @@
                             const { latitude, longitude } = posFallback.coords;
                             map.setView([latitude, longitude], 16); 
                             if(mapMarker) { mapMarker.setLatLng([latitude, longitude]); } 
-                            else { mapMarker = L.marker([latitude, longitude], { draggable: true }).addTo(map); } // VERSÃO 2.4
+                            else { mapMarker = L.marker([latitude, longitude], { draggable: true }).addTo(map); }
                             mostrarToast("GPS Aproximado encontrado.");
                             btn.innerText = textoOriginal; 
                             btn.disabled = false;
@@ -853,18 +868,56 @@
             }
         }
 
-        function abrirScanner() {
-            if (typeof Html5QrcodeScanner === 'undefined') { alert("O Scanner precisa de internet na primeira vez que abre."); return; }
+        // --- VERSÃO 2.5: Novas funções de processamento de QR Code ---
+        
+        window.processarTextoQR = function(text) {
+            if (text.toUpperCase().startsWith("WIFI:")) {
+                let s = "", p = ""; const pts = text.substring(5).split(";");
+                for (let pt of pts) { 
+                    if (pt.toUpperCase().startsWith("S:")) s = pt.substring(2); 
+                    else if (pt.toUpperCase().startsWith("P:")) p = pt.substring(2); 
+                }
+                if (s) { 
+                    document.getElementById('novoSSID').value = s; 
+                    document.getElementById('novaSenha').value = p; 
+                    checarDuplicadoModal(); 
+                    mostrarToast("QR Code importado!");
+                }
+            } else {
+                mostrarToast("QR Code inválido para Wi-Fi.");
+            }
+        };
+
+        window.abrirScannerCamera = function() {
+            if (typeof Html5QrcodeScanner === 'undefined') { alert("Conecte-se à internet para usar o scanner."); return; }
+            fecharModal(); // Fecha o modal "Nova Rede"
             document.getElementById('modalScanner').style.display = 'flex';
             window.scannerInstancia = new Html5QrcodeScanner("reader", { fps: 10, qrbox: {width: 250, height: 250} }, false);
             window.scannerInstancia.render((text) => {
-                if (text.toUpperCase().startsWith("WIFI:")) {
-                    let s = "", p = ""; const pts = text.substring(5).split(";");
-                    for (let pt of pts) { if (pt.toUpperCase().startsWith("S:")) s = pt.substring(2); else if (pt.toUpperCase().startsWith("P:")) p = pt.substring(2); }
-                    if (s) { fecharScanner(); abrirModal(); document.getElementById('novoSSID').value = s; document.getElementById('novaSenha').value = p; checarDuplicadoModal(); }
-                }
+                fecharScanner();
+                abrirModal();
+                processarTextoQR(text);
             }, () => {});
-        }
+        };
+
+        window.escanearImagemQR = function(e) {
+            if (e.target.files.length == 0) return;
+            const file = e.target.files[0];
+            
+            if (typeof Html5Qrcode === 'undefined') { alert("Conecte-se à internet para usar o scanner."); return; }
+            
+            mostrarToast("Analisando imagem...");
+            
+            Html5Qrcode.scanFile(file, true)
+            .then(qrCodeMessage => {
+                processarTextoQR(qrCodeMessage);
+            })
+            .catch(err => {
+                mostrarToast("Nenhum QR Code encontrado na imagem.");
+            });
+            
+            e.target.value = ''; // Reseta o input para permitir selecionar a mesma imagem se der erro
+        };
 
         function fecharScanner() { if (window.scannerInstancia) { window.scannerInstancia.clear(); } document.getElementById('modalScanner').style.display = 'none'; }
         function mostrarToast(m) { const t = document.getElementById('toast'); t.innerText = m; t.className = 'show'; setTimeout(() => t.className = '', 3000); }
