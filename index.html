@@ -109,6 +109,12 @@
         <div class="modal-content" style="max-width: 500px;">
             <h3 id="tituloModalMapa" style="margin-bottom: 5px;">📍 Localização da Rede</h3>
             <button class="btn-geo" id="btnGpsMapa" onclick="usarMeuGPSNoMapa()" style="margin-bottom: 8px; width: 100%; background: #0EA5E9;">🎯 Usar meu GPS atual</button>
+            
+            <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                <input type="text" id="inputCoordenadasMapa" placeholder="-23.5505, -46.6333 (Cole aqui)" style="flex-grow: 1; font-size: 13px;">
+                <button class="btn-scan" onclick="aplicarCoordenadasNoMapa()" style="padding: 10px; min-width: 45px;" title="Buscar no Mapa">🔍</button>
+            </div>
+
             <div id="mapa-container" style="height: 300px; width: 100%; border-radius: 8px; border: 1px solid var(--border);"></div>
             <div style="display:flex; gap:10px; justify-content: flex-end; margin-top:10px;">
                 <button style="background:var(--text-muted)" onclick="fecharMapa()">Cancelar</button>
@@ -217,7 +223,7 @@
             } catch (e) { return []; }
         };
 
-        // --- ATUALIZAÇÃO DO CONTADOR: AGORA SOMA TODAS AS AÇÕES OFFLINE ---
+        // --- ATUALIZAÇÃO DO CONTADOR ---
         window.atualizarContador = function(modo, totalNuvem = 0) {
             const el = document.getElementById('statusContador');
             
@@ -324,7 +330,7 @@
             if(inputOculta) inputOculta.value = txtBackup; 
         };
 
-        // --- SISTEMA DE EXCLUSÃO COM "DESFAZER" E FILA OFFLINE ---
+        // --- SISTEMA DE EXCLUSÃO COM "DESFAZER" ---
         window.iniciarExclusao = function(id, ssid) {
             if (window.redePendenteExclusao) window.confirmarExclusaoDefinitiva();
             const rede = window.redesEmMemoria.find(r => r.id === id);
@@ -366,10 +372,8 @@
             const id = window.redePendenteExclusao.id;
 
             if (navigator.onLine && typeof window.firebaseExcluir === 'function') {
-                // Se estiver online e for uma rede da nuvem, apaga na hora
                 if (!id.toString().startsWith('local_')) window.firebaseExcluir(id);
             } else {
-                // Se estiver OFFLINE, salva na fila para apagar depois
                 if (!id.toString().startsWith('local_')) {
                     let filaExclusao = JSON.parse(localStorage.getItem('wifi_pro_deletes_v1') || '[]');
                     if(!filaExclusao.includes(id)) filaExclusao.push(id);
@@ -465,7 +469,6 @@
             fecharModalAvancado();
         };
 
-        // --- EXPORTAÇÕES (RESTAURADAS E COMPLETAS) ---
         window.exportarTXT = function() {
             if (window.redesEmMemoria.length === 0) { mostrarToast("Nenhuma rede para exportar."); return; }
             let texto = "Senhas Wi-Fi Salvas\n\n";
@@ -516,7 +519,6 @@
                 if (navigator.onLine && typeof window.firebaseAtualizar === 'function' && !rede.id.toString().startsWith('local_')) {
                     window.firebaseAtualizar(rede.id, novaLat, novaLng);
                 } else if (!rede.id.toString().startsWith('local_')) {
-                    // Fila de Update Offline
                     let filaUpdate = JSON.parse(localStorage.getItem('wifi_pro_updates_v1') || '{}');
                     filaUpdate[rede.id] = { lat: novaLat, lng: novaLng };
                     localStorage.setItem('wifi_pro_updates_v1', JSON.stringify(filaUpdate));
@@ -573,7 +575,7 @@
             }, () => window.pararRadar(), {enableHighAccuracy: true});
         };
 
-        // --- MAPAS: INQUEBRÁVEIS E COM CAMADAS ---
+        // --- MAPAS ---
         window.abrirMapaGlobal = function() {
             if (typeof L === 'undefined') { alert("Conecte-se à internet para carregar o mapa."); return; }
             document.getElementById('modalMapaGlobal').style.display = 'flex';
@@ -588,7 +590,7 @@
             const osmLayer = L.tileLayer(TILE_OSM, { maxZoom: 19 });
             const satLayer = L.tileLayer(TILE_SATELLITE, { maxZoom: 18 });
 
-            osmLayer.addTo(mapGlobal); // Abre leve por padrão
+            osmLayer.addTo(mapGlobal);
 
             L.control.layers({
                 "Mapa Padrão (Leve)": osmLayer,
@@ -614,6 +616,10 @@
             if (typeof L === 'undefined') { alert("Conecte-se à internet para carregar o mapa."); return; }
             document.getElementById('modalMapa').style.display = 'flex';
             document.getElementById('tituloModalMapa').innerText = `📍 ${ssid}`;
+            
+            // Limpa o campo de coordenadas sempre que abrir o modal
+            document.getElementById('inputCoordenadasMapa').value = '';
+
             redeEditandoMapa = { id };
             
             if(map) { 
@@ -650,23 +656,44 @@
             setTimeout(() => { if(map) map.invalidateSize(); }, 300);
         };
 
-        // --- BOTÃO DE GPS: DUPLA TENTATIVA ---
+        // --- NOVA FUNÇÃO: LER COORDENADAS COLADAS ---
+        window.aplicarCoordenadasNoMapa = function() {
+            const input = document.getElementById('inputCoordenadasMapa').value;
+            if (!input.trim()) return;
+
+            // Divide pelo separador (vírgula)
+            const partes = input.split(',');
+            if (partes.length >= 2) {
+                const lat = parseFloat(partes[0].trim());
+                const lng = parseFloat(partes[1].trim());
+
+                if (!isNaN(lat) && !isNaN(lng)) {
+                    if (map) {
+                        map.setView([lat, lng], 18);
+                        if (mapMarker) {
+                            mapMarker.setLatLng([lat, lng]);
+                        } else {
+                            mapMarker = L.marker([lat, lng]).addTo(map);
+                        }
+                        mostrarToast("Alvo atualizado!");
+                    }
+                } else {
+                    alert("Coordenadas inválidas. Use apenas números e vírgula.");
+                }
+            } else {
+                alert("Formato inválido. Cole no formato: Latitude, Longitude (Ex: -23.55, -46.63)");
+            }
+        };
+
         window.usarMeuGPSNoMapa = function() {
-            if (!map) {
-                mostrarToast("Erro: O mapa não foi inicializado.");
-                return;
-            }
-            if (!navigator.geolocation) {
-                alert("Seu navegador não suporta GPS.");
-                return;
-            }
+            if (!map) { mostrarToast("Erro: O mapa não foi inicializado."); return; }
+            if (!navigator.geolocation) { alert("Seu navegador não suporta GPS."); return; }
 
             const btn = document.getElementById('btnGpsMapa');
             const textoOriginal = btn.innerText;
             btn.innerText = "🎯 Buscando satélites...";
             btn.disabled = true;
 
-            // Tentativa 1: Alta Precisão
             navigator.geolocation.getCurrentPosition(
                 (pos) => {
                     const { latitude, longitude } = pos.coords;
@@ -678,7 +705,6 @@
                     btn.disabled = false;
                 },
                 (err) => {
-                    // Tentativa 2: Baixa Precisão (Fallback para não travar)
                     navigator.geolocation.getCurrentPosition(
                         (posFallback) => {
                             const { latitude, longitude } = posFallback.coords;
@@ -702,13 +728,12 @@
         };
 
         window.salvarLocalizacaoMapa = function() {
-            if(!mapMarker) { mostrarToast("Clique no mapa para marcar o local primeiro!"); return; }
+            if(!mapMarker) { mostrarToast("Marque o local no mapa primeiro!"); return; }
             const { lat, lng } = mapMarker.getLatLng();
             
             if (navigator.onLine && typeof window.firebaseAtualizar === 'function' && !redeEditandoMapa.id.toString().startsWith('local_')) { 
                 window.firebaseAtualizar(redeEditandoMapa.id, lat, lng); 
             } else if (!redeEditandoMapa.id.toString().startsWith('local_')) {
-                // Fila Update Offline
                 let filaUpdate = JSON.parse(localStorage.getItem('wifi_pro_updates_v1') || '{}');
                 filaUpdate[redeEditandoMapa.id] = { lat: lat, lng: lng };
                 localStorage.setItem('wifi_pro_updates_v1', JSON.stringify(filaUpdate));
@@ -723,7 +748,7 @@
             mostrarToast("Coordenadas salvas!"); fecharMapa();
         };
 
-        // 4. RENDERIZAÇÃO E UTILS
+        // RENDERIZAÇÃO E UTILS
         function renderizarInterface(lista, radar = false) {
             const out = document.getElementById('output');
             out.innerHTML = '';
@@ -837,7 +862,6 @@
                     update(ref(db, 'redes_wifi/' + id), { lat, lng }).catch(()=>{});
                 };
 
-                // A VERDADEIRA BLINDAGEM DO FIREBASE: Só sincroniza quando a nuvem diz "Estou Online!"
                 const connectedRef = ref(db, '.info/connected');
                 onValue(connectedRef, (snap) => {
                     if (snap.val() === true) {
@@ -852,11 +876,9 @@
                         listaNuvem = Object.keys(dados).map(c => ({ id: c, ...dados[c] }));
                     }
 
-                    // FILTRAGEM: Oculta da tela as redes que você apagou offline
                     const filaExclusao = JSON.parse(localStorage.getItem('wifi_pro_deletes_v1') || '[]');
                     listaNuvem = listaNuvem.filter(r => !filaExclusao.includes(r.id));
 
-                    // ATUALIZAÇÃO: Mostra na tela o GPS que você alterou offline
                     const filaUpdate = JSON.parse(localStorage.getItem('wifi_pro_updates_v1') || '{}');
                     listaNuvem = listaNuvem.map(r => {
                         if(filaUpdate[r.id]) {
@@ -869,7 +891,6 @@
                         listaNuvem = listaNuvem.filter(r => r.id !== window.redePendenteExclusao.id);
                     }
 
-                    // ADIÇÃO: Junta as redes criadas offline que ainda não subiram
                     const pendentesLocais = window.redesEmMemoria.filter(r => String(r.id).startsWith('local_'));
                     listaNuvem = [...listaNuvem, ...pendentesLocais];
 
