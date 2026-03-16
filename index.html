@@ -182,15 +182,12 @@
         let map, mapMarker, redeEditandoMapa;
         let mapGlobal; 
         
-        // Variaveis globais pro marcador do usuario no mapa geral
         window.marcadorUsuarioGlobal = null;
         window.circuloUsuarioGlobal = null;
 
-        // URLs dos Mapas
         const TILE_SATELLITE = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
         const TILE_OSM = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
 
-        // --- SISTEMA INDEXED DB ---
         window.initDB = function() {
             return new Promise((resolve, reject) => {
                 const request = indexedDB.open('WiFiManagerDB_v9', 1);
@@ -228,7 +225,6 @@
             } catch (e) { return []; }
         };
 
-        // --- ATUALIZAÇÃO DO CONTADOR ---
         window.atualizarContador = function(modo, totalNuvem = 0) {
             const el = document.getElementById('statusContador');
             
@@ -250,7 +246,6 @@
             }
         };
 
-        // --- SUPER FILA DE SINCRONIZAÇÃO OFFLINE ---
         window.sincronizarPendentes = async function() {
             if (typeof window.firebasePush !== 'function') return;
 
@@ -332,7 +327,6 @@
             if(inputOculta) inputOculta.value = txtBackup; 
         };
 
-        // --- SISTEMA DE EXCLUSÃO COM "DESFAZER" ---
         window.iniciarExclusao = function(id, ssid) {
             if (window.redePendenteExclusao) window.confirmarExclusaoDefinitiva();
             const rede = window.redesEmMemoria.find(r => r.id === id);
@@ -577,7 +571,6 @@
             }, () => window.pararRadar(), {enableHighAccuracy: true});
         };
 
-        // --- MAPAS (COM MODIFICAÇÕES DA VERSÃO 2.3) ---
         window.abrirMapaGlobal = function() {
             if (typeof L === 'undefined') { alert("Conecte-se à internet para carregar o mapa."); return; }
             document.getElementById('modalMapaGlobal').style.display = 'flex';
@@ -608,7 +601,6 @@
                     const lat = parseFloat(r.lat); const lng = parseFloat(r.lng);
                     const marker = L.marker([lat, lng]).addTo(mapGlobal);
                     
-                    // VERSÃO 2.3: Popup com botão de copiar senha e NOVO botão para Editar Localização
                     const popupHTML = `
                         <div style="text-align: center; min-width: 140px; padding: 5px;">
                             <b style="font-size: 15px; color: var(--primary); display: block; margin-bottom: 5px;">${r.ssid}</b>
@@ -706,13 +698,14 @@
                 "Satélite (Visual)": satLayer
             }).addTo(map);
             
+            // VERSÃO 2.4: Adicionado { draggable: true } aos marcadores editáveis
             if(z === 18) {
-                mapMarker = L.marker([l, g]).addTo(map);
+                mapMarker = L.marker([l, g], { draggable: true }).addTo(map);
             }
             
             map.on('click', (e) => { 
                 if(mapMarker) mapMarker.setLatLng(e.latlng); 
-                else mapMarker = L.marker(e.latlng).addTo(map); 
+                else mapMarker = L.marker(e.latlng, { draggable: true }).addTo(map); 
             });
             
             setTimeout(() => { if(map) map.invalidateSize(); }, 300);
@@ -733,7 +726,8 @@
                         if (mapMarker) {
                             mapMarker.setLatLng([lat, lng]);
                         } else {
-                            mapMarker = L.marker([lat, lng]).addTo(map);
+                            // VERSÃO 2.4
+                            mapMarker = L.marker([lat, lng], { draggable: true }).addTo(map);
                         }
                         mostrarToast("Alvo atualizado!");
                     }
@@ -759,7 +753,7 @@
                     const { latitude, longitude } = pos.coords;
                     map.setView([latitude, longitude], 18); 
                     if(mapMarker) { mapMarker.setLatLng([latitude, longitude]); } 
-                    else { mapMarker = L.marker([latitude, longitude]).addTo(map); }
+                    else { mapMarker = L.marker([latitude, longitude], { draggable: true }).addTo(map); } // VERSÃO 2.4
                     mostrarToast("GPS de Alta Precisão encontrado!");
                     btn.innerText = textoOriginal; 
                     btn.disabled = false;
@@ -770,7 +764,7 @@
                             const { latitude, longitude } = posFallback.coords;
                             map.setView([latitude, longitude], 16); 
                             if(mapMarker) { mapMarker.setLatLng([latitude, longitude]); } 
-                            else { mapMarker = L.marker([latitude, longitude]).addTo(map); }
+                            else { mapMarker = L.marker([latitude, longitude], { draggable: true }).addTo(map); } // VERSÃO 2.4
                             mostrarToast("GPS Aproximado encontrado.");
                             btn.innerText = textoOriginal; 
                             btn.disabled = false;
@@ -808,7 +802,6 @@
             mostrarToast("Coordenadas salvas!"); fecharMapa();
         };
 
-        // RENDERIZAÇÃO E UTILS
         function renderizarInterface(lista, radar = false) {
             const out = document.getElementById('output');
             out.innerHTML = '';
