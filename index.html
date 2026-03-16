@@ -868,7 +868,7 @@
             }
         }
 
-        // --- VERSÃO 2.5: Novas funções de processamento de QR Code ---
+        // --- SISTEMA DE QR CODE CORRIGIDO (VERSÃO 2.6) ---
         
         window.processarTextoQR = function(text) {
             if (text.toUpperCase().startsWith("WIFI:")) {
@@ -890,9 +890,16 @@
 
         window.abrirScannerCamera = function() {
             if (typeof Html5QrcodeScanner === 'undefined') { alert("Conecte-se à internet para usar o scanner."); return; }
-            fecharModal(); // Fecha o modal "Nova Rede"
+            fecharModal(); 
             document.getElementById('modalScanner').style.display = 'flex';
-            window.scannerInstancia = new Html5QrcodeScanner("reader", { fps: 10, qrbox: {width: 250, height: 250} }, false);
+            
+            // Aqui passamos o parâmetro supportedScanTypes: [0] para DESATIVAR a opção em inglês
+            window.scannerInstancia = new Html5QrcodeScanner("reader", { 
+                fps: 10, 
+                qrbox: {width: 250, height: 250},
+                supportedScanTypes: [0] 
+            }, false);
+            
             window.scannerInstancia.render((text) => {
                 fecharScanner();
                 abrirModal();
@@ -904,19 +911,31 @@
             if (e.target.files.length == 0) return;
             const file = e.target.files[0];
             
-            if (typeof Html5Qrcode === 'undefined') { alert("Conecte-se à internet para usar o scanner."); return; }
-            
+            if (typeof Html5Qrcode === 'undefined') { alert("Conecte-se à internet para carregar o escâner."); return; }
             mostrarToast("Analisando imagem...");
-            
-            Html5Qrcode.scanFile(file, true)
+
+            // Criamos uma tela invisível no fundo só pro leitor desenhar a imagem e não quebrar
+            const tempDiv = document.createElement("div");
+            tempDiv.id = "temp-qr-reader";
+            tempDiv.style.position = "absolute";
+            tempDiv.style.top = "-9999px";
+            document.body.appendChild(tempDiv);
+
+            const html5QrCode = new Html5Qrcode("temp-qr-reader");
+
+            html5QrCode.scanFile(file, true)
             .then(qrCodeMessage => {
                 processarTextoQR(qrCodeMessage);
+                html5QrCode.clear();
+                document.body.removeChild(tempDiv);
             })
             .catch(err => {
-                mostrarToast("Nenhum QR Code encontrado na imagem.");
+                mostrarToast("Nenhum QR encontrado ou a imagem está muito embaçada.");
+                html5QrCode.clear();
+                document.body.removeChild(tempDiv);
             });
-            
-            e.target.value = ''; // Reseta o input para permitir selecionar a mesma imagem se der erro
+
+            e.target.value = ''; // Limpa para permitir subir a mesma foto de novo, se precisar
         };
 
         function fecharScanner() { if (window.scannerInstancia) { window.scannerInstancia.clear(); } document.getElementById('modalScanner').style.display = 'none'; }
