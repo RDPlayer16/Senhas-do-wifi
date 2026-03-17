@@ -196,8 +196,8 @@
             <h3 style="margin-bottom: 5px;">➕ Nova Rede Wi-Fi</h3>
             
             <div style="display:flex; gap: 8px; margin-bottom: 5px;">
-                <button class="btn-scan" style="flex: 1; font-size: 13px;" onclick="abrirScannerCamera('novo'); window.vibrar();">📷 Escanear QR</button>
-                <button class="btn-scan" style="flex: 1; font-size: 13px; background: #8B5CF6;" onclick="document.getElementById('qrFileInput').click(); window.vibrar();">🖼️ QR da Galeria</button>
+                <button class="btn-scan" style="flex: 1; font-size: 13px;" onclick="window.vibrar(); abrirScannerCamera('novo');">📷 Escanear QR</button>
+                <button class="btn-scan" style="flex: 1; font-size: 13px; background: #8B5CF6;" onclick="window.vibrar(); document.getElementById('qrFileInput').click();">🖼️ QR da Galeria</button>
             </div>
             
             <input type="file" id="qrFileInput" accept="image/*" style="display:none;" onchange="escanearImagemQR(event, 'novo')">
@@ -212,7 +212,7 @@
             </label>
             
             <div id="msgDuplicadoModal" class="aviso-duplicado"></div>
-            <button id="btnAdicionarGeo" class="btn-geo" style="display:none;" onclick="atualizarGeoRedeExistente(); window.vibrar();">📍 Adicionar GPS Agora</button>
+            <button id="btnAdicionarGeo" class="btn-geo" style="display:none;" onclick="window.vibrar(); atualizarGeoRedeExistente();">📍 Adicionar GPS Agora</button>
             
             <div style="display:flex; gap:10px; justify-content: flex-end; margin-top:10px;">
                 <button style="background:var(--text-muted)" onclick="fecharModal()">Cancelar</button>
@@ -226,8 +226,8 @@
             <h3 style="margin-bottom: 5px;">✏️ Editar Rede</h3>
 
             <div style="display:flex; gap: 8px; margin-bottom: 10px;">
-                <button class="btn-scan" style="flex: 1; font-size: 13px;" onclick="abrirScannerCamera('editar'); window.vibrar();">📷 Escanear QR</button>
-                <button class="btn-scan" style="flex: 1; font-size: 13px; background: #8B5CF6;" onclick="document.getElementById('editQrFileInput').click(); window.vibrar();">🖼️ QR da Galeria</button>
+                <button class="btn-scan" style="flex: 1; font-size: 13px;" onclick="window.vibrar(); abrirScannerCamera('editar');">📷 Escanear QR</button>
+                <button class="btn-scan" style="flex: 1; font-size: 13px; background: #8B5CF6;" onclick="window.vibrar(); document.getElementById('editQrFileInput').click();">🖼️ QR da Galeria</button>
             </div>
             
             <input type="file" id="editQrFileInput" accept="image/*" style="display:none;" onchange="escanearImagemQR(event, 'editar')">
@@ -248,7 +248,7 @@
     <div id="modalScanner" class="modal-overlay">
         <div class="modal-content">
             <div id="reader"></div>
-            <button style="background:var(--danger); margin-top:10px;" onclick="fecharScanner(true); window.vibrar();">Voltar</button>
+            <button style="background:var(--danger); margin-top:10px;" onclick="window.vibrar(); fecharScanner(true);">Voltar</button>
         </div>
     </div>
 
@@ -1102,12 +1102,7 @@
             }, false);
             
             window.scannerInstancia.render((text) => {
-                fecharScanner();
-                if (window.scanTarget === 'editar') {
-                    document.getElementById('modalEditarRede').style.display = 'flex';
-                } else {
-                    abrirModal();
-                }
+                window.fecharScanner(true);
                 processarTextoQR(text, window.scanTarget);
             }, () => {});
         };
@@ -1143,7 +1138,7 @@
             e.target.value = ''; 
         };
 
-        // VERSÃO 3.5: Lógica inteligente do botão Voltar/Cancelar do Escâner
+        // VERSÃO 3.6: Lógica corrigida do botão Voltar/Cancelar
         window.fecharScanner = function(voltarParaModalAnterior = false) {
             if (window.scannerInstancia) { 
                 window.scannerInstancia.clear(); 
