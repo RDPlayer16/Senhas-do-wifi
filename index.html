@@ -562,185 +562,69 @@
             window.atualizarContador(navigator.onLine ? 'sincronizando' : 'offline');
         };
 
-        // VERSÃO 3.7: Nova Lógica de Salvar com Coordenadas Manuais
-        window.salvarRedeLocal = async function() {
-            window.vibrar(); 
-            const s = document.getElementById('novoSSID').value.trim();
-            const p = document.getElementById('novaSenha').value.trim();
-            
-            if(!s || !p) { mostrarToast("Preencha o nome e a senha!"); return; }
-            if(p.length < 8) { mostrarToast("⚠️ A senha deve ter no mínimo 8 caracteres!"); return; }
-
-            const usarGeo = document.getElementById('checkLocalizacao').checked;
-            const coordManual = document.getElementById('novaCoordenadaManual').value.trim();
-            let lat = null, lng = null;
-            const btnSalvar = document.getElementById('btnSalvarModal');
-
-            // Lógica de Prioridade: Coordenada Manual > GPS Automático
-            if (coordManual) {
-                const partes = coordManual.split(',');
-                if (partes.length >= 2) {
-                    const l = parseFloat(partes[0].trim());
-                    const g = parseFloat(partes[1].trim());
-                    if (!isNaN(l) && !isNaN(g)) {
-                        lat = l; lng = g;
-                    } else {
-                        mostrarToast("Coordenadas manuais inválidas."); return;
-                    }
-                } else {
-                    mostrarToast("Formato de GPS inválido. Use: Lat, Lng"); return;
-                }
-            } else if (usarGeo) {
-                btnSalvar.innerText = "📍 GPS..."; btnSalvar.disabled = true;
-                try {
-                    const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, {
-                        enableHighAccuracy: true, timeout: 10000, maximumAge: 0 
-                    }));
-                    lat = pos.coords.latitude; lng = pos.coords.longitude;
-                } catch(e) {
-                    mostrarToast("Erro de GPS. Salvo sem localização.");
-                }
-            }
-
-            let novoId = 'local_' + Date.now() + Math.floor(Math.random() * 1000); 
-            if (navigator.onLine && typeof window.firebasePush === 'function') {
-                try { const key = window.firebasePush(s, p, lat, lng); if (key) novoId = key; } catch(e) {}
-            }
-
-            const obj = { id: novoId, ssid: s, senha: p, lat, lng };
-            window.redesEmMemoria.push(obj);
-            window.redesEmMemoria.sort((a, b) => a.ssid.localeCompare(b.ssid));
-            
-            window.atualizarBackupLocal(window.redesEmMemoria);
-            if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
-            
-            window.atualizarContador(navigator.onLine ? 'sincronizando' : 'offline');
-            
-            fecharModal(); btnSalvar.innerText = "Salvar"; btnSalvar.disabled = false;
-            mostrarToast("Salvo!");
-        };
-
-        window.importarListaTexto = async function() {
-            window.vibrar();
-            const texto = document.getElementById('listaInputOculta').value;
-            if (!texto.trim()) return;
-
-            const linhas = texto.split('\n');
-            let adicionados = 0; let ignorados = 0;
-
-            linhas.forEach(linha => {
-                const l = linha.trim();
-                if (l.startsWith('* ')) {
-                    const indexDoisPontos = l.indexOf(': ');
-                    if (indexDoisPontos !== -1) {
-                        const ssidExtraido = l.substring(2, indexDoisPontos).trim();
-                        const senhaExtraida = l.substring(indexDoisPontos + 2).trim();
-
-                        if (senhaExtraida.length < 8) { ignorados++; return; }
-
-                        const existe = window.redesEmMemoria.find(r => r.ssid === ssidExtraido && r.senha === senhaExtraida);
-                        if (!existe && ssidExtraido && senhaExtraida) {
-                            let novoId = 'local_' + Date.now() + Math.floor(Math.random() * 10000) + adicionados;
-                            if (navigator.onLine && typeof window.firebasePush === 'function') {
-                                try { const key = window.firebasePush(ssidExtraido, senhaExtraida, null, null); if (key) novoId = key; } catch(e) {}
-                            }
-                            window.redesEmMemoria.push({ id: novoId, ssid: ssidExtraido, senha: senhaExtraida, lat: null, lng: null });
-                            adicionados++;
-                        }
-                    }
-                }
-            });
-
-            if (adicionados > 0) {
-                window.redesEmMemoria.sort((a, b) => a.ssid.localeCompare(b.ssid));
-                await window.atualizarBackupLocal(window.redesEmMemoria);
-                if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
-                
-                window.atualizarContador(navigator.onLine ? 'sincronizando' : 'offline');
-                
-                let msg = `${adicionados} rede(s) importada(s)!`;
-                if (ignorados > 0) msg += ` (${ignorados} ignoradas por senha curta)`;
-                mostrarToast(msg);
-            } else { mostrarToast("Nenhuma rede nova ou válida encontrada."); }
-            fecharModalAvancado();
-        };
-
-        window.abrirModalExportar = function() {
-            document.getElementById('modalExportar').style.display = 'flex';
-        };
-
-        window.fecharModalExportar = function() {
-            document.getElementById('modalExportar').style.display = 'none';
-        };
-
-        window.exportarTXT = function() {
-            window.vibrar();
-            if (window.redesEmMemoria.length === 0) { mostrarToast("Nenhuma rede para exportar."); return; }
-            let texto = "Senhas Wi-Fi Salvas\n\n";
-            window.redesEmMemoria.forEach(r => { texto += `* ${r.ssid}: ${r.senha}\n`; });
-            const blob = new Blob([texto], { type: "text/plain;charset=utf-8" });
-            const a = document.createElement("a");
-            a.href = URL.createObjectURL(blob);
-            a.download = "Senhas_WiFi_Backup.txt";
-            a.click();
-        };
-
-        window.exportarPDF = function() {
-            window.vibrar();
-            if (typeof window.jspdf === 'undefined') { alert("Conecte-se à internet para carregar a biblioteca de PDF."); return; }
-            if (window.redesEmMemoria.length === 0) { mostrarToast("Nenhuma rede para exportar."); return; }
-            const { jsPDF } = window.jspdf;
-            const doc = new jsPDF();
-            doc.setFontSize(16);
-            doc.text("Backup de Senhas Wi-Fi", 10, 10);
-            doc.setFontSize(12);
-            let y = 20;
-            window.redesEmMemoria.forEach((r, i) => {
-                if (y > 280) { doc.addPage(); y = 10; }
-                doc.text(`${i+1}. ${r.ssid} - Senha: ${r.senha}`, 10, y);
-                y += 8;
-            });
-            doc.save("Senhas_WiFi_Backup.pdf");
-        };
-
+        // VERSÃO 3.8: BUG CORRIGIDO - Lê a coordenada manual prioritariamente ao atualizar a rede
         window.atualizarGeoRedeExistente = async function() {
             if (!window.redeDuplicadaAtual || !window.redeDuplicadaAtual.id) return;
             const rede = window.redeDuplicadaAtual;
             const btn = document.getElementById('btnAdicionarGeo');
             const textoOriginal = btn.innerText;
 
-            btn.innerText = "📍 Obtendo GPS..."; btn.disabled = true;
+            const coordManual = document.getElementById('novaCoordenadaManual').value.trim();
+            let novaLat = null, novaLng = null;
 
-            try {
-                const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { 
-                    enableHighAccuracy: true, timeout: 10000, maximumAge: 0 
-                }));
-                const novaLat = pos.coords.latitude; const novaLng = pos.coords.longitude;
-
-                if (rede.lat) {
-                    const dist = calcularDistancia(novaLat, novaLng, rede.lat, rede.lng);
-                    if (dist <= 30) { alert(`Distância de ${Math.round(dist)}m. GPS já está preciso.`); fecharModal(); return; }
+            if (coordManual) {
+                const partes = coordManual.split(',');
+                if (partes.length >= 2) {
+                    const l = parseFloat(partes[0].trim());
+                    const g = parseFloat(partes[1].trim());
+                    if (!isNaN(l) && !isNaN(g)) {
+                        novaLat = l; novaLng = g;
+                    } else {
+                        mostrarToast("Coordenadas manuais inválidas."); return;
+                    }
+                } else {
+                    mostrarToast("Formato de GPS inválido. Use: Lat, Lng"); return;
                 }
-
-                if (navigator.onLine && typeof window.firebaseAtualizar === 'function' && !rede.id.toString().startsWith('local_')) {
-                    window.firebaseAtualizar(rede.id, novaLat, novaLng);
-                } else if (!rede.id.toString().startsWith('local_')) {
-                    let filaUpdate = JSON.parse(localStorage.getItem('wifi_pro_updates_v1') || '{}');
-                    if(!filaUpdate[rede.id]) filaUpdate[rede.id] = {};
-                    filaUpdate[rede.id].lat = novaLat;
-                    filaUpdate[rede.id].lng = novaLng;
-                    localStorage.setItem('wifi_pro_updates_v1', JSON.stringify(filaUpdate));
+            } else {
+                btn.innerText = "📍 Obtendo GPS..."; btn.disabled = true;
+                try {
+                    const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, { 
+                        enableHighAccuracy: true, timeout: 10000, maximumAge: 0 
+                    }));
+                    novaLat = pos.coords.latitude; novaLng = pos.coords.longitude;
+                } catch (error) { 
+                    alert("Erro de GPS. Tente novamente em local aberto ou cole coordenadas manuais."); 
+                    btn.innerText = textoOriginal; btn.disabled = false; 
+                    return; 
                 }
-                
-                const index = window.redesEmMemoria.findIndex(r => r.id === rede.id);
-                if(index !== -1) { window.redesEmMemoria[index].lat = novaLat; window.redesEmMemoria[index].lng = novaLng; }
-                
-                window.atualizarBackupLocal(window.redesEmMemoria);
-                if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
+            }
 
-                window.atualizarContador(navigator.onLine ? 'sincronizando' : 'offline');
-                mostrarToast("GPS Atualizado!"); fecharModal();
-            } catch (error) { alert("Erro de GPS. Tente novamente em local aberto."); btn.innerText = textoOriginal; btn.disabled = false; }
+            // O alerta de distância só faz sentido se não for coordenada manual
+            if (rede.lat && !coordManual) {
+                const dist = calcularDistancia(novaLat, novaLng, rede.lat, rede.lng);
+                if (dist <= 30) { alert(`Distância de ${Math.round(dist)}m. GPS já está preciso.`); fecharModal(); return; }
+            }
+
+            if (navigator.onLine && typeof window.firebaseAtualizar === 'function' && !rede.id.toString().startsWith('local_')) {
+                window.firebaseAtualizar(rede.id, novaLat, novaLng);
+            } else if (!rede.id.toString().startsWith('local_')) {
+                let filaUpdate = JSON.parse(localStorage.getItem('wifi_pro_updates_v1') || '{}');
+                if(!filaUpdate[rede.id]) filaUpdate[rede.id] = {};
+                filaUpdate[rede.id].lat = novaLat;
+                filaUpdate[rede.id].lng = novaLng;
+                localStorage.setItem('wifi_pro_updates_v1', JSON.stringify(filaUpdate));
+            }
+            
+            const index = window.redesEmMemoria.findIndex(r => r.id === rede.id);
+            if(index !== -1) { window.redesEmMemoria[index].lat = novaLat; window.redesEmMemoria[index].lng = novaLng; }
+            
+            window.atualizarBackupLocal(window.redesEmMemoria);
+            if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
+
+            window.atualizarContador(navigator.onLine ? 'sincronizando' : 'offline');
+            mostrarToast("GPS Atualizado!"); 
+            btn.innerText = textoOriginal; btn.disabled = false;
+            fecharModal();
         };
 
         window.compartilharRede = async function(ssid, senha) {
@@ -1176,7 +1060,6 @@
         function mostrarToast(m) { const t = document.getElementById('toast'); t.innerText = m; t.className = 'show'; setTimeout(() => t.className = '', 3000); }
         function abrirModal() { document.getElementById('modalNovaRede').style.display = 'flex'; }
         
-        // VERSÃO 3.7: Limpando o novo campo ao fechar o modal
         function fecharModal() { 
             document.getElementById('modalNovaRede').style.display = 'none'; 
             document.getElementById('novoSSID').value = ''; 
