@@ -207,9 +207,11 @@
             <input type="text" id="novoSSID" placeholder="Nome da Rede (SSID)" oninput="checarDuplicadoModal()">
             <input type="text" id="novaSenha" placeholder="Senha" oninput="checarDuplicadoModal()">
             
-            <label style="font-size: 14px; display: flex; align-items: center; gap: 8px; cursor: pointer;" id="containerCheckLocalizacao">
+            <label style="font-size: 14px; display: flex; align-items: center; gap: 8px; cursor: pointer; margin-top: 5px;" id="containerCheckLocalizacao">
                 <input type="checkbox" id="checkLocalizacao" checked style="width: 18px; height: 18px;"> Usar GPS (Alta Precisão)
             </label>
+            
+            <input type="text" id="novaCoordenadaManual" placeholder="Ou cole coordenadas: -23.55, -46.63 (Opcional)" style="margin-top: 2px; font-size: 13px;">
             
             <div id="msgDuplicadoModal" class="aviso-duplicado"></div>
             <button id="btnAdicionarGeo" class="btn-geo" style="display:none;" onclick="window.vibrar(); atualizarGeoRedeExistente();">📍 Adicionar GPS Agora</button>
@@ -560,6 +562,7 @@
             window.atualizarContador(navigator.onLine ? 'sincronizando' : 'offline');
         };
 
+        // VERSÃO 3.7: Nova Lógica de Salvar com Coordenadas Manuais
         window.salvarRedeLocal = async function() {
             window.vibrar(); 
             const s = document.getElementById('novoSSID').value.trim();
@@ -569,17 +572,34 @@
             if(p.length < 8) { mostrarToast("⚠️ A senha deve ter no mínimo 8 caracteres!"); return; }
 
             const usarGeo = document.getElementById('checkLocalizacao').checked;
+            const coordManual = document.getElementById('novaCoordenadaManual').value.trim();
             let lat = null, lng = null;
             const btnSalvar = document.getElementById('btnSalvarModal');
 
-            if (usarGeo) {
+            // Lógica de Prioridade: Coordenada Manual > GPS Automático
+            if (coordManual) {
+                const partes = coordManual.split(',');
+                if (partes.length >= 2) {
+                    const l = parseFloat(partes[0].trim());
+                    const g = parseFloat(partes[1].trim());
+                    if (!isNaN(l) && !isNaN(g)) {
+                        lat = l; lng = g;
+                    } else {
+                        mostrarToast("Coordenadas manuais inválidas."); return;
+                    }
+                } else {
+                    mostrarToast("Formato de GPS inválido. Use: Lat, Lng"); return;
+                }
+            } else if (usarGeo) {
                 btnSalvar.innerText = "📍 GPS..."; btnSalvar.disabled = true;
                 try {
                     const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, {
                         enableHighAccuracy: true, timeout: 10000, maximumAge: 0 
                     }));
                     lat = pos.coords.latitude; lng = pos.coords.longitude;
-                } catch(e) {}
+                } catch(e) {
+                    mostrarToast("Erro de GPS. Salvo sem localização.");
+                }
             }
 
             let novoId = 'local_' + Date.now() + Math.floor(Math.random() * 1000); 
@@ -1138,7 +1158,6 @@
             e.target.value = ''; 
         };
 
-        // VERSÃO 3.6: Lógica corrigida do botão Voltar/Cancelar
         window.fecharScanner = function(voltarParaModalAnterior = false) {
             if (window.scannerInstancia) { 
                 window.scannerInstancia.clear(); 
@@ -1156,7 +1175,20 @@
 
         function mostrarToast(m) { const t = document.getElementById('toast'); t.innerText = m; t.className = 'show'; setTimeout(() => t.className = '', 3000); }
         function abrirModal() { document.getElementById('modalNovaRede').style.display = 'flex'; }
-        function fecharModal() { document.getElementById('modalNovaRede').style.display = 'none'; document.getElementById('novoSSID').value = ''; document.getElementById('novaSenha').value = ''; document.getElementById('msgDuplicadoModal').style.display = 'none'; document.getElementById('btnSalvarModal').style.display = 'flex'; document.getElementById('containerCheckLocalizacao').style.display = 'flex'; document.getElementById('btnAdicionarGeo').style.display = 'none'; window.redeDuplicadaAtual = null; }
+        
+        // VERSÃO 3.7: Limpando o novo campo ao fechar o modal
+        function fecharModal() { 
+            document.getElementById('modalNovaRede').style.display = 'none'; 
+            document.getElementById('novoSSID').value = ''; 
+            document.getElementById('novaSenha').value = ''; 
+            document.getElementById('novaCoordenadaManual').value = ''; 
+            document.getElementById('msgDuplicadoModal').style.display = 'none'; 
+            document.getElementById('btnSalvarModal').style.display = 'flex'; 
+            document.getElementById('containerCheckLocalizacao').style.display = 'flex'; 
+            document.getElementById('btnAdicionarGeo').style.display = 'none'; 
+            window.redeDuplicadaAtual = null; 
+        }
+        
         function fecharMapa() { document.getElementById('modalMapa').style.display = 'none'; }
         function filtrar() { const v = document.getElementById('searchInput').value.toLowerCase(); document.querySelectorAll('.card').forEach(c => c.style.display = c.dataset.nomeRede.includes(v) ? 'flex' : 'none'); }
         
