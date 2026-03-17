@@ -21,10 +21,13 @@
             --header-bg: rgba(255, 255, 255, 0.98); --modal-bg: #ffffff; --input-bg: #ffffff; --input-text: #111827; --btn-copy-bg: #f0f0f0;
         }
 
+        /* VERSÃO 3.1: TRUE BLACK AMOLED */
         @media (prefers-color-scheme: dark) {
             :root {
-                --bg-color: #111827; --card-bg: #1F2937; --text-main: #F9FAFB; --text-muted: #9CA3AF; --border: #374151;
-                --header-bg: rgba(31, 41, 55, 0.98); --modal-bg: #1F2937; --input-bg: #374151; --input-text: #F9FAFB; --btn-copy-bg: #374151;
+                --bg-color: #000000; /* Preto Absoluto */
+                --card-bg: #0A0A0A; /* Leve contraste para os cartões */
+                --text-main: #F9FAFB; --text-muted: #9CA3AF; --border: #1F2937;
+                --header-bg: rgba(0, 0, 0, 0.95); --modal-bg: #0A0A0A; --input-bg: #111827; --input-text: #F9FAFB; --btn-copy-bg: #1F2937;
             }
         }
 
@@ -37,8 +40,9 @@
         
         .info-status { font-size: 13px; font-weight: bold; display: flex; align-items: center; gap: 5px; color: var(--text-main); }
         
-        input[type="text"], textarea { width: 100%; padding: 12px 15px; font-size: 15px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; background: var(--input-bg); color: var(--input-text); }
+        input[type="text"], textarea { width: 100%; padding: 12px 15px; font-size: 15px; border: 1px solid var(--border); border-radius: 8px; box-sizing: border-box; background: var(--input-bg); color: var(--input-text); outline: none; }
         textarea { height: 120px; font-family: monospace; }
+        input[type="text"]:focus, textarea:focus { border-color: var(--primary); }
         
         button { padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer; background: var(--primary); color: white; border: none; border-radius: 6px; display: flex; align-items: center; justify-content: center; gap: 6px; transition: opacity 0.2s; }
         button:hover { opacity: 0.9; }
@@ -46,15 +50,10 @@
         
         .btn-add { background: var(--success); } .btn-scan { background: var(--scanner); } .btn-geo { background: var(--geo); } .btn-delete { background: var(--danger); color: white; }
         
-        /* VERSÃO 2.10: RODAPÉ DE NAVEGAÇÃO HARMONIZADO E CENTRALIZADO */
         .bottom-bar { position: fixed; bottom: 0; left: 0; right: 0; background: var(--header-bg); border-top: 1px solid var(--border); z-index: 100; backdrop-filter: blur(5px); padding-bottom: env(safe-area-inset-bottom); box-shadow: 0 -2px 10px rgba(0,0,0,0.05); }
-        
         .bottom-bar-content { max-width: 800px; margin: 0 auto; display: flex; justify-content: center; padding: 12px 15px; gap: 12px; }
-        
         .bottom-btn { flex: 1; max-width: 140px; padding: 12px 5px; font-size: 13px; font-weight: 700; border-radius: 8px; white-space: nowrap; background: var(--bg-color); color: var(--text-main); border: 1px solid var(--border); transition: 0.2s; display: flex; align-items: center; justify-content: center; gap: 5px; cursor: pointer; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-        
         .bottom-btn:hover { background: var(--border); }
-        
         .bottom-btn.btn-main { background: var(--primary); color: white; border: none; box-shadow: 0 4px 6px rgba(79, 70, 229, 0.3); }
         .bottom-btn.btn-main:hover { background: #4338ca; }
 
@@ -65,12 +64,21 @@
         .badge-geo { position: absolute; top: 10px; right: 10px; background: rgba(14, 165, 233, 0.1); color: var(--geo); font-size: 10px; padding: 3px 6px; border-radius: 10px; font-weight: bold; border: 1px solid rgba(14, 165, 233, 0.3); }
         .card h3 { margin: 5px 0; font-size: 16px; word-break: break-all; width: 85%; color: var(--text-main); }
         .card p { font-size: 13px; color: var(--text-muted); background: var(--bg-color); padding: 3px 8px; border-radius: 4px; border: 1px solid var(--border); }
-        
         .qrcode { width: 140px; height: 140px; margin: 10px 0; background: #ffffff; border: 4px solid #ffffff; border-radius: 8px; display: flex; align-items: center; justify-content: center; overflow: hidden; }
-        
         .card-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; width: 100%; margin-top: auto; }
         .btn-mini { padding: 8px; font-size: 12px; border-radius: 6px; width: 100%; box-sizing: border-box; font-weight: bold; }
         .col-span-2 { grid-column: span 2; }
+
+        /* VERSÃO 3.1: ESTILOS DO MODO COMPACTO (LISTA) */
+        #output.compact-mode { grid-template-columns: 1fr; gap: 12px; }
+        #output.compact-mode .card { flex-direction: column; min-height: auto; padding: 12px 15px; text-align: left; align-items: flex-start; }
+        #output.compact-mode .card-info { width: 100%; position: relative; display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
+        #output.compact-mode .card h3 { width: 100%; margin: 0; font-size: 16px; padding-right: 85px; box-sizing: border-box; }
+        #output.compact-mode .card p { margin: 0; display: inline-block; width: max-content; }
+        #output.compact-mode .badge-geo { position: absolute; top: 0; right: 0; margin: 0; }
+        #output.compact-mode .qrcode { display: none; }
+        #output.compact-mode .card-actions { display: flex; width: 100%; margin-top: 0; gap: 6px; }
+        #output.compact-mode .btn-mini { padding: 8px; flex: 1; font-size: 11px; }
         
         .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); z-index: 1000; justify-content: center; align-items: center; backdrop-filter: blur(3px); }
         .modal-content { background: var(--modal-bg); color: var(--text-main); padding: 20px; border-radius: 12px; width: 90%; max-width: 400px; display: flex; flex-direction: column; gap: 12px; max-height: 90vh; overflow-y: auto; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
@@ -101,10 +109,13 @@
     <div class="sticky-header">
         <div class="container">
             <div class="header-top">
-                <h1 onclick="abrirModalAvancado()">📶 Wi-Fi Manager Pro</h1>
+                <h1 onclick="abrirModalAvancado(); window.vibrar();">📶 Wi-Fi Manager Pro</h1>
                 <div id="statusContador" class="info-status">Carregando...</div>
             </div>
-            <input type="text" id="searchInput" placeholder="🔍 Pesquisar Senhas..." onkeyup="filtrar()">
+            <div style="display: flex; gap: 8px;">
+                <input type="text" id="searchInput" placeholder="🔍 Pesquisar Senhas..." onkeyup="filtrar()" style="flex-grow: 1;">
+                <button id="btnViewMode" onclick="toggleViewMode()" style="background: var(--card-bg); color: var(--text-main); border: 1px solid var(--border); padding: 0 16px; font-size: 18px;" title="Alternar Visualização">📄</button>
+            </div>
         </div>
     </div>
 
@@ -115,9 +126,9 @@
     <div class="bottom-bar">
         <div class="bottom-bar-content">
             <button class="bottom-btn" onclick="buscarSenhasPorPerto()" id="btnRadar">📍 Radar</button>
-            <button class="bottom-btn" onclick="abrirMapaGlobal()">🗺️ Mapa</button>
-            <button class="bottom-btn" onclick="abrirModalExportar()">📤 Exportar</button>
-            <button class="bottom-btn btn-main" onclick="abrirModal()">➕ Nova</button>
+            <button class="bottom-btn" onclick="abrirMapaGlobal(); window.vibrar();">🗺️ Mapa</button>
+            <button class="bottom-btn" onclick="abrirModalExportar(); window.vibrar();">📤 Exportar</button>
+            <button class="bottom-btn btn-main" onclick="abrirModal(); window.vibrar();">➕ Nova</button>
         </div>
     </div>
     
@@ -187,8 +198,8 @@
             <h3 style="margin-bottom: 5px;">➕ Nova Rede Wi-Fi</h3>
             
             <div style="display:flex; gap: 8px; margin-bottom: 5px;">
-                <button class="btn-scan" style="flex: 1; font-size: 13px;" onclick="abrirScannerCamera()">📷 Escanear QR</button>
-                <button class="btn-scan" style="flex: 1; font-size: 13px; background: #8B5CF6;" onclick="document.getElementById('qrFileInput').click()">🖼️ QR da Galeria</button>
+                <button class="btn-scan" style="flex: 1; font-size: 13px;" onclick="abrirScannerCamera(); window.vibrar();">📷 Escanear QR</button>
+                <button class="btn-scan" style="flex: 1; font-size: 13px; background: #8B5CF6;" onclick="document.getElementById('qrFileInput').click(); window.vibrar();">🖼️ QR da Galeria</button>
             </div>
             
             <input type="file" id="qrFileInput" accept="image/*" style="display:none;" onchange="escanearImagemQR(event)">
@@ -203,7 +214,7 @@
             </label>
             
             <div id="msgDuplicadoModal" class="aviso-duplicado"></div>
-            <button id="btnAdicionarGeo" class="btn-geo" style="display:none;" onclick="atualizarGeoRedeExistente()">📍 Adicionar GPS Agora</button>
+            <button id="btnAdicionarGeo" class="btn-geo" style="display:none;" onclick="atualizarGeoRedeExistente(); window.vibrar();">📍 Adicionar GPS Agora</button>
             
             <div style="display:flex; gap:10px; justify-content: flex-end; margin-top:10px;">
                 <button style="background:var(--text-muted)" onclick="fecharModal()">Cancelar</button>
@@ -235,6 +246,33 @@
 
         const TILE_SATELLITE = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
         const TILE_OSM = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+
+        // VERSÃO 3.1: Função global de Haptic Feedback
+        window.vibrar = function() {
+            if (navigator.vibrate) navigator.vibrate(40); // Vibração suave de 40ms
+        };
+
+        // VERSÃO 3.1: Controle do Modo Compacto
+        window.modoCompacto = localStorage.getItem('wifi_pro_view_v1') === 'true';
+
+        window.toggleViewMode = function() {
+            window.vibrar();
+            window.modoCompacto = !window.modoCompacto;
+            localStorage.setItem('wifi_pro_view_v1', window.modoCompacto);
+            window.aplicarViewMode();
+        };
+
+        window.aplicarViewMode = function() {
+            const out = document.getElementById('output');
+            const btn = document.getElementById('btnViewMode');
+            if (window.modoCompacto) {
+                out.classList.add('compact-mode');
+                if(btn) btn.innerText = "🗂️"; // Muda o ícone para "Cartões"
+            } else {
+                out.classList.remove('compact-mode');
+                if(btn) btn.innerText = "📄"; // Muda o ícone para "Lista"
+            }
+        };
 
         window.initDB = function() {
             return new Promise((resolve, reject) => {
@@ -333,6 +371,8 @@
         window.addEventListener('offline', () => { window.atualizarContador('offline'); });
 
         window.addEventListener('DOMContentLoaded', async () => {
+            window.aplicarViewMode(); // Aplica a visualização escolhida ao carregar a página
+            
             try {
                 const dadosLocal = await window.lerDoIndexedDB();
                 if (dadosLocal && dadosLocal.length > 0) {
@@ -376,6 +416,7 @@
         };
 
         window.iniciarExclusao = function(id, ssid) {
+            window.vibrar(); // Haptic feedback
             if (window.redePendenteExclusao) window.confirmarExclusaoDefinitiva();
             const rede = window.redesEmMemoria.find(r => r.id === id);
             if (!rede) return;
@@ -395,6 +436,7 @@
         };
 
         window.desfazerExclusao = function() {
+            window.vibrar(); // Haptic feedback
             if (!window.redePendenteExclusao) return;
             clearTimeout(window.deleteTimeout);
             
@@ -431,6 +473,7 @@
         };
 
         window.salvarRedeLocal = async function() {
+            window.vibrar(); // Haptic feedback
             const s = document.getElementById('novoSSID').value.trim();
             const p = document.getElementById('novaSenha').value.trim();
             
@@ -470,6 +513,7 @@
         };
 
         window.importarListaTexto = async function() {
+            window.vibrar();
             const texto = document.getElementById('listaInputOculta').value;
             if (!texto.trim()) return;
 
@@ -522,6 +566,7 @@
         };
 
         window.exportarTXT = function() {
+            window.vibrar();
             if (window.redesEmMemoria.length === 0) { mostrarToast("Nenhuma rede para exportar."); return; }
             let texto = "Senhas Wi-Fi Salvas\n\n";
             window.redesEmMemoria.forEach(r => { texto += `* ${r.ssid}: ${r.senha}\n`; });
@@ -533,6 +578,7 @@
         };
 
         window.exportarPDF = function() {
+            window.vibrar();
             if (typeof window.jspdf === 'undefined') { alert("Conecte-se à internet para carregar a biblioteca de PDF."); return; }
             if (window.redesEmMemoria.length === 0) { mostrarToast("Nenhuma rede para exportar."); return; }
             const { jsPDF } = window.jspdf;
@@ -588,6 +634,7 @@
         };
 
         window.compartilharRede = async function(ssid, senha) {
+            window.vibrar();
             if (navigator.share) {
                 try {
                     await navigator.share({
@@ -600,7 +647,6 @@
             }
         };
 
-        // VERSÃO 2.10: Limpeza de botões inline na função de parar Radar
         window.pararRadar = function(veioDoCopy = false) {
             window.mostrandoApenasProximas = false;
             if (window.radarWatchId) { navigator.geolocation.clearWatch(window.radarWatchId); window.radarWatchId = null; }
@@ -615,6 +661,7 @@
 
         window.buscarSenhasPorPerto = function() {
             if (window.mostrandoApenasProximas) return window.pararRadar();
+            window.vibrar(); // Vibra apenas no clique manual de ligar o radar
             const btn = document.getElementById('btnRadar');
             btn.innerText = "❌ Parar";
             btn.style.background = "var(--danger)";
@@ -681,6 +728,7 @@
         };
 
         window.mostrarMinhaLocalizacaoNoMapa = function() {
+            window.vibrar();
             if (!mapGlobal) return;
             mostrarToast("📍 Buscando sua localização...");
             
@@ -731,6 +779,7 @@
         };
 
         window.abrirMapaParaRede = function(id, ssid, lat, lng) {
+            window.vibrar();
             if (typeof L === 'undefined') { alert("Conecte-se à internet para carregar o mapa."); return; }
             document.getElementById('modalMapa').style.display = 'flex';
             document.getElementById('tituloModalMapa').innerText = `📍 ${ssid}`;
@@ -774,6 +823,7 @@
         };
 
         window.aplicarCoordenadasNoMapa = function() {
+            window.vibrar();
             const input = document.getElementById('inputCoordenadasMapa').value;
             if (!input.trim()) return;
 
@@ -801,6 +851,7 @@
         };
 
         window.usarMeuGPSNoMapa = function() {
+            window.vibrar();
             if (!map) { mostrarToast("Erro: O mapa não foi inicializado."); return; }
             if (!navigator.geolocation) { alert("Seu navegador não suporta GPS."); return; }
 
@@ -843,6 +894,7 @@
         };
 
         window.salvarLocalizacaoMapa = function() {
+            window.vibrar();
             if(!mapMarker) { mostrarToast("Marque o local no mapa primeiro!"); return; }
             const { lat, lng } = mapMarker.getLatLng();
             
@@ -873,7 +925,12 @@
                 const btnMapa = r.lat ? "🗺️ Editar Local" : "📍 Add Local";
                 const corMapa = r.lat ? "var(--geo)" : "#6366F1";
 
-                div.innerHTML = `${dist}<h3>${r.ssid}</h3><p>${r.senha}</p>
+                div.innerHTML = `
+                    <div class="card-info">
+                        ${dist}
+                        <h3>${r.ssid}</h3>
+                        <p>${r.senha}</p>
+                    </div>
                     <div class="qrcode" data-ssid="${r.ssid}" data-pass="${r.senha}">Gerando...</div>
                     <div class="card-actions">
                         <button class="btn-mini" style="background:var(--btn-copy-bg);color:var(--text-main)" onclick="copy('${r.senha}')">📋 Copiar</button>
@@ -894,6 +951,7 @@
         }
 
         function copy(t) { 
+            window.vibrar(); // Haptic feedback
             const el = document.createElement('textarea'); el.value = t; document.body.appendChild(el); el.select(); document.execCommand('copy'); document.body.removeChild(el); 
             if(window.mostrandoApenasProximas) { window.pararRadar(true); mostrarToast("Copiado e Radar desligado!"); }
             else { mostrarToast("Copiado!"); }
