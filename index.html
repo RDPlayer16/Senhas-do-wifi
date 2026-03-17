@@ -21,11 +21,10 @@
             --header-bg: rgba(255, 255, 255, 0.98); --modal-bg: #ffffff; --input-bg: #ffffff; --input-text: #111827; --btn-copy-bg: #f0f0f0;
         }
 
-        /* VERSÃO 3.1: TRUE BLACK AMOLED */
         @media (prefers-color-scheme: dark) {
             :root {
-                --bg-color: #000000; /* Preto Absoluto */
-                --card-bg: #0A0A0A; /* Leve contraste para os cartões */
+                --bg-color: #000000;
+                --card-bg: #0A0A0A;
                 --text-main: #F9FAFB; --text-muted: #9CA3AF; --border: #1F2937;
                 --header-bg: rgba(0, 0, 0, 0.95); --modal-bg: #0A0A0A; --input-bg: #111827; --input-text: #F9FAFB; --btn-copy-bg: #1F2937;
             }
@@ -69,7 +68,6 @@
         .btn-mini { padding: 8px; font-size: 12px; border-radius: 6px; width: 100%; box-sizing: border-box; font-weight: bold; }
         .col-span-2 { grid-column: span 2; }
 
-        /* VERSÃO 3.1: ESTILOS DO MODO COMPACTO (LISTA) */
         #output.compact-mode { grid-template-columns: 1fr; gap: 12px; }
         #output.compact-mode .card { flex-direction: column; min-height: auto; padding: 12px 15px; text-align: left; align-items: flex-start; }
         #output.compact-mode .card-info { width: 100%; position: relative; display: flex; flex-direction: column; gap: 4px; margin-bottom: 12px; }
@@ -198,11 +196,11 @@
             <h3 style="margin-bottom: 5px;">➕ Nova Rede Wi-Fi</h3>
             
             <div style="display:flex; gap: 8px; margin-bottom: 5px;">
-                <button class="btn-scan" style="flex: 1; font-size: 13px;" onclick="abrirScannerCamera(); window.vibrar();">📷 Escanear QR</button>
+                <button class="btn-scan" style="flex: 1; font-size: 13px;" onclick="abrirScannerCamera('novo'); window.vibrar();">📷 Escanear QR</button>
                 <button class="btn-scan" style="flex: 1; font-size: 13px; background: #8B5CF6;" onclick="document.getElementById('qrFileInput').click(); window.vibrar();">🖼️ QR da Galeria</button>
             </div>
             
-            <input type="file" id="qrFileInput" accept="image/*" style="display:none;" onchange="escanearImagemQR(event)">
+            <input type="file" id="qrFileInput" accept="image/*" style="display:none;" onchange="escanearImagemQR(event, 'novo')">
             
             <div class="divider">OU DIGITE MANUALMENTE</div>
 
@@ -223,8 +221,35 @@
         </div>
     </div>
 
+    <div id="modalEditarRede" class="modal-overlay">
+        <div class="modal-content">
+            <h3 style="margin-bottom: 5px;">✏️ Editar Rede</h3>
+
+            <div style="display:flex; gap: 8px; margin-bottom: 10px;">
+                <button class="btn-scan" style="flex: 1; font-size: 13px;" onclick="abrirScannerCamera('editar'); window.vibrar();">📷 Escanear QR</button>
+                <button class="btn-scan" style="flex: 1; font-size: 13px; background: #8B5CF6;" onclick="document.getElementById('editQrFileInput').click(); window.vibrar();">🖼️ QR da Galeria</button>
+            </div>
+            
+            <input type="file" id="editQrFileInput" accept="image/*" style="display:none;" onchange="escanearImagemQR(event, 'editar')">
+
+            <input type="text" id="editSSID" placeholder="Nome da Rede (SSID)">
+            <input type="text" id="editSenha" placeholder="Nova Senha">
+            
+            <div style="display:flex; justify-content: space-between; margin-top:15px; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <button class="btn-delete" style="padding: 10px; font-size: 12px; background: transparent; color: var(--danger); border: 1px solid var(--danger);" onclick="excluirPeloModalEditar()">🗑️ Apagar Rede</button>
+                <div style="display:flex; gap:10px; margin-left: auto;">
+                    <button style="background:var(--text-muted)" onclick="fecharModalEditar()">Cancelar</button>
+                    <button class="btn-add" onclick="salvarEdicaoRede()">Salvar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div id="modalScanner" class="modal-overlay">
-        <div class="modal-content"><div id="reader"></div><button style="background:var(--danger); margin-top:10px;" onclick="fecharScanner()">Cancelar</button></div>
+        <div class="modal-content">
+            <div id="reader"></div>
+            <button style="background:var(--danger); margin-top:10px;" onclick="fecharScanner(true); window.vibrar();">Voltar</button>
+        </div>
     </div>
 
     <script>
@@ -238,6 +263,9 @@
         window.redePendenteExclusao = null;
         window.deleteTimeout = null;
 
+        window.redeEditandoAtual = null;
+        window.scanTarget = 'novo'; 
+
         let map, mapMarker, redeEditandoMapa;
         let mapGlobal; 
         
@@ -247,12 +275,10 @@
         const TILE_SATELLITE = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
         const TILE_OSM = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
 
-        // VERSÃO 3.1: Função global de Haptic Feedback
         window.vibrar = function() {
-            if (navigator.vibrate) navigator.vibrate(40); // Vibração suave de 40ms
+            if (navigator.vibrate) navigator.vibrate(40);
         };
 
-        // VERSÃO 3.1: Controle do Modo Compacto
         window.modoCompacto = localStorage.getItem('wifi_pro_view_v1') === 'true';
 
         window.toggleViewMode = function() {
@@ -267,10 +293,10 @@
             const btn = document.getElementById('btnViewMode');
             if (window.modoCompacto) {
                 out.classList.add('compact-mode');
-                if(btn) btn.innerText = "🗂️"; // Muda o ícone para "Cartões"
+                if(btn) btn.innerText = "🗂️"; 
             } else {
                 out.classList.remove('compact-mode');
-                if(btn) btn.innerText = "📄"; // Muda o ícone para "Lista"
+                if(btn) btn.innerText = "📄"; 
             }
         };
 
@@ -346,7 +372,11 @@
             let filaUpdate = JSON.parse(localStorage.getItem('wifi_pro_updates_v1') || '{}');
             if (Object.keys(filaUpdate).length > 0) {
                 Object.keys(filaUpdate).forEach(id => {
-                    if(typeof window.firebaseAtualizar === 'function') window.firebaseAtualizar(id, filaUpdate[id].lat, filaUpdate[id].lng);
+                    const up = filaUpdate[id];
+                    const toUpdate = {};
+                    if(up.lat !== undefined) { toUpdate.lat = up.lat; toUpdate.lng = up.lng; }
+                    if(up.ssid !== undefined) { toUpdate.ssid = up.ssid; toUpdate.senha = up.senha; }
+                    if(typeof window.firebaseAtualizarObjeto === 'function') window.firebaseAtualizarObjeto(id, toUpdate);
                 });
                 localStorage.removeItem('wifi_pro_updates_v1');
             }
@@ -371,7 +401,7 @@
         window.addEventListener('offline', () => { window.atualizarContador('offline'); });
 
         window.addEventListener('DOMContentLoaded', async () => {
-            window.aplicarViewMode(); // Aplica a visualização escolhida ao carregar a página
+            window.aplicarViewMode(); 
             
             try {
                 const dadosLocal = await window.lerDoIndexedDB();
@@ -415,8 +445,66 @@
             if(inputOculta) inputOculta.value = txtBackup; 
         };
 
+        window.abrirModalEditar = function(id) {
+            window.vibrar();
+            const rede = window.redesEmMemoria.find(r => r.id === id);
+            if(!rede) return;
+            window.redeEditandoAtual = rede;
+            document.getElementById('editSSID').value = rede.ssid;
+            document.getElementById('editSenha').value = rede.senha;
+            document.getElementById('modalEditarRede').style.display = 'flex';
+        };
+
+        window.fecharModalEditar = function() {
+            document.getElementById('modalEditarRede').style.display = 'none';
+            window.redeEditandoAtual = null;
+        };
+
+        window.salvarEdicaoRede = async function() {
+            window.vibrar();
+            if(!window.redeEditandoAtual) return;
+            const s = document.getElementById('editSSID').value.trim();
+            const p = document.getElementById('editSenha').value.trim();
+            if(!s || !p) { mostrarToast("Preencha o nome e a senha!"); return; }
+            if(p.length < 8) { mostrarToast("⚠️ A senha deve ter no mínimo 8 caracteres!"); return; }
+
+            const id = window.redeEditandoAtual.id;
+            const index = window.redesEmMemoria.findIndex(r => r.id === id);
+            
+            if(index !== -1) {
+                window.redesEmMemoria[index].ssid = s;
+                window.redesEmMemoria[index].senha = p;
+            }
+
+            if (navigator.onLine && typeof window.firebaseEditarCredenciais === 'function' && !id.toString().startsWith('local_')) {
+                window.firebaseEditarCredenciais(id, s, p);
+            } else if (!id.toString().startsWith('local_')) {
+                let filaUpdate = JSON.parse(localStorage.getItem('wifi_pro_updates_v1') || '{}');
+                if(!filaUpdate[id]) filaUpdate[id] = {};
+                filaUpdate[id].ssid = s;
+                filaUpdate[id].senha = p;
+                localStorage.setItem('wifi_pro_updates_v1', JSON.stringify(filaUpdate));
+            }
+
+            window.redesEmMemoria.sort((a, b) => a.ssid.localeCompare(b.ssid));
+            window.atualizarBackupLocal(window.redesEmMemoria);
+            
+            if (!window.mostrandoApenasProximas) renderizarInterface(window.redesEmMemoria);
+            window.atualizarContador(navigator.onLine ? 'sincronizando' : 'offline');
+
+            fecharModalEditar();
+            mostrarToast("Rede atualizada com sucesso!");
+        };
+
+        window.excluirPeloModalEditar = function() {
+            if(window.redeEditandoAtual) {
+                window.iniciarExclusao(window.redeEditandoAtual.id, window.redeEditandoAtual.ssid);
+                fecharModalEditar();
+            }
+        };
+
         window.iniciarExclusao = function(id, ssid) {
-            window.vibrar(); // Haptic feedback
+            window.vibrar(); 
             if (window.redePendenteExclusao) window.confirmarExclusaoDefinitiva();
             const rede = window.redesEmMemoria.find(r => r.id === id);
             if (!rede) return;
@@ -436,7 +524,7 @@
         };
 
         window.desfazerExclusao = function() {
-            window.vibrar(); // Haptic feedback
+            window.vibrar(); 
             if (!window.redePendenteExclusao) return;
             clearTimeout(window.deleteTimeout);
             
@@ -473,7 +561,7 @@
         };
 
         window.salvarRedeLocal = async function() {
-            window.vibrar(); // Haptic feedback
+            window.vibrar(); 
             const s = document.getElementById('novoSSID').value.trim();
             const p = document.getElementById('novaSenha').value.trim();
             
@@ -618,7 +706,9 @@
                     window.firebaseAtualizar(rede.id, novaLat, novaLng);
                 } else if (!rede.id.toString().startsWith('local_')) {
                     let filaUpdate = JSON.parse(localStorage.getItem('wifi_pro_updates_v1') || '{}');
-                    filaUpdate[rede.id] = { lat: novaLat, lng: novaLng };
+                    if(!filaUpdate[rede.id]) filaUpdate[rede.id] = {};
+                    filaUpdate[rede.id].lat = novaLat;
+                    filaUpdate[rede.id].lng = novaLng;
                     localStorage.setItem('wifi_pro_updates_v1', JSON.stringify(filaUpdate));
                 }
                 
@@ -661,7 +751,7 @@
 
         window.buscarSenhasPorPerto = function() {
             if (window.mostrandoApenasProximas) return window.pararRadar();
-            window.vibrar(); // Vibra apenas no clique manual de ligar o radar
+            window.vibrar(); 
             const btn = document.getElementById('btnRadar');
             btn.innerText = "❌ Parar";
             btn.style.background = "var(--danger)";
@@ -902,7 +992,9 @@
                 window.firebaseAtualizar(redeEditandoMapa.id, lat, lng); 
             } else if (!redeEditandoMapa.id.toString().startsWith('local_')) {
                 let filaUpdate = JSON.parse(localStorage.getItem('wifi_pro_updates_v1') || '{}');
-                filaUpdate[redeEditandoMapa.id] = { lat: lat, lng: lng };
+                if(!filaUpdate[redeEditandoMapa.id]) filaUpdate[redeEditandoMapa.id] = {};
+                filaUpdate[redeEditandoMapa.id].lat = lat;
+                filaUpdate[redeEditandoMapa.id].lng = lng;
                 localStorage.setItem('wifi_pro_updates_v1', JSON.stringify(filaUpdate));
             }
 
@@ -935,8 +1027,8 @@
                     <div class="card-actions">
                         <button class="btn-mini" style="background:var(--btn-copy-bg);color:var(--text-main)" onclick="copy('${r.senha}')">📋 Copiar</button>
                         <button class="btn-mini" style="background:var(--success);color:#fff" onclick="compartilharRede('${r.ssid}', '${r.senha}')">🔗 Compartilhar</button>
-                        <button class="btn-mini btn-delete" onclick="window.iniciarExclusao('${r.id}','${r.ssid}')">🗑️ Excluir</button>
                         <button class="btn-mini" style="background:${corMapa}; color:#fff;" onclick="window.abrirMapaParaRede('${r.id}','${r.ssid}','${r.lat}','${r.lng}')">${btnMapa}</button>
+                        <button class="btn-mini" style="background:var(--warning); color:#fff;" onclick="abrirModalEditar('${r.id}')">✏️ Editar</button>
                     </div>`;
                 out.appendChild(div);
                 if(window.observer) window.observer.observe(div.querySelector('.qrcode'));
@@ -951,7 +1043,7 @@
         }
 
         function copy(t) { 
-            window.vibrar(); // Haptic feedback
+            window.vibrar(); 
             const el = document.createElement('textarea'); el.value = t; document.body.appendChild(el); el.select(); document.execCommand('copy'); document.body.removeChild(el); 
             if(window.mostrandoApenasProximas) { window.pararRadar(true); mostrarToast("Copiado e Radar desligado!"); }
             else { mostrarToast("Copiado!"); }
@@ -972,7 +1064,7 @@
             }
         }
 
-        window.processarTextoQR = function(text) {
+        window.processarTextoQR = function(text, target) {
             if (text.toUpperCase().startsWith("WIFI:")) {
                 let s = "", p = ""; const pts = text.substring(5).split(";");
                 for (let pt of pts) { 
@@ -980,19 +1072,27 @@
                     else if (pt.toUpperCase().startsWith("P:")) p = pt.substring(2); 
                 }
                 if (s) { 
-                    document.getElementById('novoSSID').value = s; 
-                    document.getElementById('novaSenha').value = p; 
-                    checarDuplicadoModal(); 
-                    mostrarToast("QR Code importado!");
+                    if (target === 'editar') {
+                        document.getElementById('editSSID').value = s; 
+                        document.getElementById('editSenha').value = p; 
+                        mostrarToast("Novos dados importados do QR!");
+                    } else {
+                        document.getElementById('novoSSID').value = s; 
+                        document.getElementById('novaSenha').value = p; 
+                        checarDuplicadoModal(); 
+                        mostrarToast("QR Code importado!");
+                    }
                 }
             } else {
                 mostrarToast("QR Code inválido para Wi-Fi.");
             }
         };
 
-        window.abrirScannerCamera = function() {
+        window.abrirScannerCamera = function(target = 'novo') {
+            window.scanTarget = target;
             if (typeof Html5QrcodeScanner === 'undefined') { alert("Conecte-se à internet para usar o scanner."); return; }
             fecharModal(); 
+            fecharModalEditar();
             document.getElementById('modalScanner').style.display = 'flex';
             
             window.scannerInstancia = new Html5QrcodeScanner("reader", { 
@@ -1003,12 +1103,17 @@
             
             window.scannerInstancia.render((text) => {
                 fecharScanner();
-                abrirModal();
-                processarTextoQR(text);
+                if (window.scanTarget === 'editar') {
+                    document.getElementById('modalEditarRede').style.display = 'flex';
+                } else {
+                    abrirModal();
+                }
+                processarTextoQR(text, window.scanTarget);
             }, () => {});
         };
 
-        window.escanearImagemQR = function(e) {
+        window.escanearImagemQR = function(e, target = 'novo') {
+            window.scanTarget = target;
             if (e.target.files.length == 0) return;
             const file = e.target.files[0];
             
@@ -1025,7 +1130,7 @@
 
             html5QrCode.scanFile(file, true)
             .then(qrCodeMessage => {
-                processarTextoQR(qrCodeMessage);
+                processarTextoQR(qrCodeMessage, window.scanTarget);
                 html5QrCode.clear();
                 document.body.removeChild(tempDiv);
             })
@@ -1038,7 +1143,22 @@
             e.target.value = ''; 
         };
 
-        function fecharScanner() { if (window.scannerInstancia) { window.scannerInstancia.clear(); } document.getElementById('modalScanner').style.display = 'none'; }
+        // VERSÃO 3.5: Lógica inteligente do botão Voltar/Cancelar do Escâner
+        window.fecharScanner = function(voltarParaModalAnterior = false) {
+            if (window.scannerInstancia) { 
+                window.scannerInstancia.clear(); 
+            } 
+            document.getElementById('modalScanner').style.display = 'none'; 
+            
+            if (voltarParaModalAnterior) {
+                if (window.scanTarget === 'editar' && window.redeEditandoAtual) {
+                    document.getElementById('modalEditarRede').style.display = 'flex';
+                } else if (window.scanTarget === 'novo') {
+                    document.getElementById('modalNovaRede').style.display = 'flex';
+                }
+            }
+        };
+
         function mostrarToast(m) { const t = document.getElementById('toast'); t.innerText = m; t.className = 'show'; setTimeout(() => t.className = '', 3000); }
         function abrirModal() { document.getElementById('modalNovaRede').style.display = 'flex'; }
         function fecharModal() { document.getElementById('modalNovaRede').style.display = 'none'; document.getElementById('novoSSID').value = ''; document.getElementById('novaSenha').value = ''; document.getElementById('msgDuplicadoModal').style.display = 'none'; document.getElementById('btnSalvarModal').style.display = 'flex'; document.getElementById('containerCheckLocalizacao').style.display = 'flex'; document.getElementById('btnAdicionarGeo').style.display = 'none'; window.redeDuplicadaAtual = null; }
@@ -1087,6 +1207,14 @@
                     update(ref(db, 'redes_wifi/' + id), { lat, lng }).catch(()=>{});
                 };
 
+                window.firebaseEditarCredenciais = function(id, ssid, senha) {
+                    update(ref(db, 'redes_wifi/' + id), { ssid, senha }).catch(()=>{});
+                };
+
+                window.firebaseAtualizarObjeto = function(id, obj) {
+                    update(ref(db, 'redes_wifi/' + id), obj).catch(()=>{});
+                };
+
                 const connectedRef = ref(db, '.info/connected');
                 onValue(connectedRef, (snap) => {
                     if (snap.val() === true) {
@@ -1107,7 +1235,8 @@
                     const filaUpdate = JSON.parse(localStorage.getItem('wifi_pro_updates_v1') || '{}');
                     listaNuvem = listaNuvem.map(r => {
                         if(filaUpdate[r.id]) {
-                            return { ...r, lat: filaUpdate[r.id].lat, lng: filaUpdate[r.id].lng };
+                            if(filaUpdate[r.id].lat !== undefined) { r.lat = filaUpdate[r.id].lat; r.lng = filaUpdate[r.id].lng; }
+                            if(filaUpdate[r.id].ssid !== undefined) { r.ssid = filaUpdate[r.id].ssid; r.senha = filaUpdate[r.id].senha; }
                         }
                         return r;
                     });
