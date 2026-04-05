@@ -850,87 +850,78 @@
             }, () => window.pararRadar(), {enableHighAccuracy: true});
         };
 
-        // VERSÃO 4.1: Renderização baseada em Promises e Observação de DOM
         window.abrirMapaGlobal = function() {
-            if (typeof L === 'undefined') { alert("Conecte-se à internet para carregar o mapa."); return; }
+    if (typeof L === 'undefined') { alert("Conecte-se à internet para carregar o mapa."); return; }
+    
+    const modal = document.getElementById('modalMapaGlobal');
+    modal.style.display = 'flex';
+    
+    if(mapGlobal) { 
+        mapGlobal.remove(); 
+        document.getElementById('mapa-global-container').innerHTML = '';
+        window.marcadorUsuarioGlobal = null;
+        window.circuloUsuarioGlobal = null;
+    }
+
+    // 1. Inicializa o mapa com a visão global padrão
+    mapGlobal = L.map('mapa-global-container').setView([-15, -50], 4); 
+    
+    const osmLayer = L.tileLayer(TILE_OSM, { maxZoom: 19 });
+    const satLayer = L.tileLayer(TILE_SATELLITE, { maxZoom: 18 });
+    osmLayer.addTo(mapGlobal);
+
+    L.control.layers({
+        "Mapa Padrão": osmLayer,
+        "Satélite": satLayer
+    }).addTo(mapGlobal);
+    
+    // 2. Filtra as redes válidas
+    const redesComGeo = window.redesEmMemoria.filter(r => {
+        return r.lat != null && r.lng != null && 
+               r.lat !== 'null' && r.lng !== 'null' &&
+               r.lat !== 'undefined' && r.lng !== 'undefined' &&
+               r.lat !== '' && r.lng !== '';
+    });
+
+    // 3. Adiciona os marcadores IMEDIATAMENTE e guarda as posições
+    const markers = [];
+    if (redesComGeo.length > 0) {
+        redesComGeo.forEach(r => {
+            const lat = parseFloat(r.lat); 
+            const lng = parseFloat(r.lng);
             
-            const modal = document.getElementById('modalMapaGlobal');
-            modal.style.display = 'flex';
+            if(isNaN(lat) || isNaN(lng)) return;
+
+            const marker = L.marker([lat, lng]).addTo(mapGlobal);
             
-            if(mapGlobal) { 
-                mapGlobal.remove(); 
-                document.getElementById('mapa-global-container').innerHTML = '';
-                window.marcadorUsuarioGlobal = null;
-                window.circuloUsuarioGlobal = null;
-            }
+            const popupHTML = `
+                <div style="text-align: center; min-width: 140px; padding: 5px;">
+                    <b style="font-size: 15px; color: var(--primary); display: block; margin-bottom: 5px;">${r.ssid}</b>
+                    <span style="font-size: 13px; color: #555; display: block; margin-bottom: 12px; background: #f0f0f0; padding: 4px; border-radius: 4px;">${r.senha}</span>
+                    <button onclick="copy('${r.senha}')" style="background: var(--success); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 8px;">📋 Copiar Senha</button>
+                    <button onclick="fecharMapaGlobal(); abrirMapaParaRede('${r.id}', '${r.ssid}', '${r.lat}', '${r.lng}')" style="background: var(--geo); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">🗺️ Editar Local</button>
+                </div>
+            `;
+            marker.bindPopup(popupHTML);
+            markers.push([lat, lng]);
+        });
+    }
 
-            // Garante que as redes estejam atualizadas e extraídas antes do mapa pensar em inicializar
-            window.lerDoIndexedDB().then(dadosFrescos => {
-                const redesValidas = (dadosFrescos || window.redesEmMemoria).filter(r => {
-                    return r.lat != null && r.lng != null && 
-                           r.lat !== 'null' && r.lng !== 'null' &&
-                           r.lat !== 'undefined' && r.lng !== 'undefined' &&
-                           r.lat !== '' && r.lng !== '';
-                });
+    // 4. A CHAVE DA CORREÇÃO: Aguardar o modal estar 100% visível para calcular o 'fitBounds'
+    setTimeout(() => {
+        // Força o Leaflet a recalcular as dimensões do mapa dentro do modal
+        mapGlobal.invalidateSize(true); 
 
-                // Criamos uma Promise para esperar o DOM confirmar que a div tem altura real
-                return new Promise(resolve => {
-                    const checkSize = () => {
-                        const h = document.getElementById('mapa-global-container').clientHeight;
-                        if (h > 0) resolve(redesValidas);
-                        else requestAnimationFrame(checkSize);
-                    };
-                    checkSize();
-                });
-            }).then(redesComGeo => {
-                // A partir daqui, DOM e Dados estão 100% garantidos.
-                mapGlobal = L.map('mapa-global-container').setView([-15, -50], 4); 
-                
-                const osmLayer = L.tileLayer(TILE_OSM, { maxZoom: 19 });
-                const satLayer = L.tileLayer(TILE_SATELLITE, { maxZoom: 18 });
-                osmLayer.addTo(mapGlobal);
-
-                L.control.layers({
-                    "Mapa Padrão": osmLayer,
-                    "Satélite": satLayer
-                }).addTo(mapGlobal);
-                
-                mapGlobal.invalidateSize(); 
-
-                if (redesComGeo.length > 0) {
-                    const markers = []; 
-                    
-                    redesComGeo.forEach(r => {
-                        const lat = parseFloat(r.lat); const lng = parseFloat(r.lng);
-                        if(isNaN(lat) || isNaN(lng)) return;
-
-                        const marker = L.marker([lat, lng]).addTo(mapGlobal);
-                        
-                        const popupHTML = `
-                            <div style="text-align: center; min-width: 140px; padding: 5px;">
-                                <b style="font-size: 15px; color: var(--primary); display: block; margin-bottom: 5px;">${r.ssid}</b>
-                                <span style="font-size: 13px; color: #555; display: block; margin-bottom: 12px; background: #f0f0f0; padding: 4px; border-radius: 4px;">${r.senha}</span>
-                                <button onclick="copy('${r.senha}')" style="background: var(--success); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 8px;">📋 Copiar Senha</button>
-                                <button onclick="fecharMapaGlobal(); abrirMapaParaRede('${r.id}', '${r.ssid}', '${r.lat}', '${r.lng}')" style="background: var(--geo); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">🗺️ Editar Local</button>
-                            </div>
-                        `;
-                        marker.bindPopup(popupHTML);
-                        markers.push([lat, lng]);
-                    });
-
-                    if(markers.length > 0) {
-                        const bounds = L.latLngBounds(markers);
-                        // Aplicamos o flyToBounds que é mais estável e garante a centralização
-                        mapGlobal.flyToBounds(bounds, { padding: [40, 40], maxZoom: 18, duration: 0.5 });
-                    } else {
-                        focarLocalizacaoUsuario(mapGlobal);
-                    }
-                } else {
-                    focarLocalizacaoUsuario(mapGlobal);
-                }
-            });
-        };
-
+        if (markers.length > 0) {
+            // Se existirem marcadores, cria os limites e centraliza suavemente
+            const bounds = L.latLngBounds(markers);
+            mapGlobal.flyToBounds(bounds, { padding: [40, 40], maxZoom: 18, duration: 0.5 });
+        } else {
+            // Fallback apenas se NÃO houver nenhum marcador salvo
+            focarLocalizacaoUsuario(mapGlobal);
+        }
+    }, 300); // 300ms é tempo suficiente para o DOM renderizar o modal em qualquer dispositivo
+};
         function focarLocalizacaoUsuario(mapInstance) {
             if(navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(p => {
