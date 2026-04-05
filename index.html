@@ -812,74 +812,93 @@
             }, () => window.pararRadar(), {enableHighAccuracy: true});
         };
 
-// CORREÇÃO: SINCRONIZAÇÃO DE RENDERIZAÇÃO MOBILE (S23 Ultra / Chrome Android)
-window.abrirMapaGlobal = function() {
-    if (typeof L === 'undefined') { alert("Conecte-se à internet para carregar o mapa."); return; }
-    
-    const modal = document.getElementById('modalMapaGlobal');
-    modal.style.display = 'flex';
-    
-    if(mapGlobal) { 
-        mapGlobal.remove(); 
-        document.getElementById('mapa-global-container').innerHTML = '';
-        window.marcadorUsuarioGlobal = null;
-        window.circuloUsuarioGlobal = null;
-    }
+        // VERSÃO 4.0: FILTRO RIGOROSO E RENDERIZAÇÃO ASSÍNCRONA UNIVERSAL
+        window.abrirMapaGlobal = function() {
+            if (typeof L === 'undefined') { alert("Conecte-se à internet para carregar o mapa."); return; }
+            
+            const modal = document.getElementById('modalMapaGlobal');
+            modal.style.display = 'flex';
+            
+            if(mapGlobal) { 
+                mapGlobal.remove(); 
+                document.getElementById('mapa-global-container').innerHTML = '';
+                window.marcadorUsuarioGlobal = null;
+                window.circuloUsuarioGlobal = null;
+            }
 
-    // Usamos requestAnimationFrame para garantir que o navegador desenhou o "display: flex" antes de injetar o mapa
-    requestAnimationFrame(() => {
-        requestAnimationFrame(() => {
-            
-            mapGlobal = L.map('mapa-global-container').setView([-15, -50], 4); 
-            
-            const osmLayer = L.tileLayer(TILE_OSM, { maxZoom: 19 });
-            const satLayer = L.tileLayer(TILE_SATELLITE, { maxZoom: 18 });
-            osmLayer.addTo(mapGlobal);
-
-            L.control.layers({
-                "Mapa Padrão (Leve)": osmLayer,
-                "Satélite (Visual)": satLayer
-            }).addTo(mapGlobal);
-            
-            const redesComGeo = window.redesEmMemoria.filter(r => r.lat && r.lng && r.lat !== 'null');
-            
-            // Atraso otimizado para dispositivos mobile renderizarem a div de 85vh
+            // O uso de setTimeout puro em vez de requestAnimationFrame aninhado
+            // resolve o delay excessivo no Redmi Note 12s e alinha com S23 e PC.
             setTimeout(() => {
-                // O "true" força o Leaflet a recalcular tudo animadamente
-                mapGlobal.invalidateSize(true); 
+                mapGlobal = L.map('mapa-global-container').setView([-15, -50], 4); 
+                
+                const osmLayer = L.tileLayer(TILE_OSM, { maxZoom: 19 });
+                const satLayer = L.tileLayer(TILE_SATELLITE, { maxZoom: 18 });
+                osmLayer.addTo(mapGlobal);
 
-                if (redesComGeo.length > 0) {
-                    const markers = []; 
-                    
-                    redesComGeo.forEach(r => {
-                        const lat = parseFloat(r.lat); const lng = parseFloat(r.lng);
-                        const marker = L.marker([lat, lng]).addTo(mapGlobal);
+                L.control.layers({
+                    "Mapa Padrão": osmLayer,
+                    "Satélite": satLayer
+                }).addTo(mapGlobal);
+                
+                // SANITIZAÇÃO DE DADOS: O Leaflet quebra se tentar renderizar 'null', 'undefined' ou ''
+                const redesComGeo = window.redesEmMemoria.filter(r => {
+                    return r.lat != null && r.lng != null && 
+                           r.lat !== 'null' && r.lng !== 'null' &&
+                           r.lat !== 'undefined' && r.lng !== 'undefined' &&
+                           r.lat !== '' && r.lng !== '';
+                });
+                
+                // Dá ao DOM 100ms para o Leaflet recalcular seu tamanho dentro do Modal
+                setTimeout(() => {
+                    mapGlobal.invalidateSize(true); 
+
+                    if (redesComGeo.length > 0) {
+                        const markers = []; 
                         
-                        const popupHTML = `
-                            <div style="text-align: center; min-width: 140px; padding: 5px;">
-                                <b style="font-size: 15px; color: var(--primary); display: block; margin-bottom: 5px;">${r.ssid}</b>
-                                <span style="font-size: 13px; color: #555; display: block; margin-bottom: 12px; background: #f0f0f0; padding: 4px; border-radius: 4px;">${r.senha}</span>
-                                <button onclick="copy('${r.senha}')" style="background: var(--success); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 8px;">📋 Copiar Senha</button>
-                                <button onclick="fecharMapaGlobal(); abrirMapaParaRede('${r.id}', '${r.ssid}', '${r.lat}', '${r.lng}')" style="background: var(--geo); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">🗺️ Editar Local</button>
-                            </div>
-                        `;
-                        marker.bindPopup(popupHTML);
-                        markers.push([lat, lng]);
-                    });
+                        redesComGeo.forEach(r => {
+                            const lat = parseFloat(r.lat); const lng = parseFloat(r.lng);
+                            
+                            // Prevenção extra para NaN (Not a Number) caso o parse falhe
+                            if(isNaN(lat) || isNaN(lng)) return;
 
-                    // Aplica o cálculo e enquadra
-                    const bounds = L.latLngBounds(markers);
-                    mapGlobal.fitBounds(bounds, { padding: [30, 30], maxZoom: 18 });
+                            const marker = L.marker([lat, lng]).addTo(mapGlobal);
+                            
+                            const popupHTML = `
+                                <div style="text-align: center; min-width: 140px; padding: 5px;">
+                                    <b style="font-size: 15px; color: var(--primary); display: block; margin-bottom: 5px;">${r.ssid}</b>
+                                    <span style="font-size: 13px; color: #555; display: block; margin-bottom: 12px; background: #f0f0f0; padding: 4px; border-radius: 4px;">${r.senha}</span>
+                                    <button onclick="copy('${r.senha}')" style="background: var(--success); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 8px;">📋 Copiar Senha</button>
+                                    <button onclick="fecharMapaGlobal(); abrirMapaParaRede('${r.id}', '${r.ssid}', '${r.lat}', '${r.lng}')" style="background: var(--geo); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">🗺️ Editar Local</button>
+                                </div>
+                            `;
+                            marker.bindPopup(popupHTML);
+                            markers.push([lat, lng]);
+                        });
 
-                } else {
-                    navigator.geolocation.getCurrentPosition(p => {
-                        mapGlobal.setView([p.coords.latitude, p.coords.longitude], 14);
-                    }, () => {});
-                }
-            }, 450); // Tempo ajustado para mobile
-        });
-    });
-};
+                        // Se pelo menos um marker válido existir, foca neles
+                        if(markers.length > 0) {
+                            const bounds = L.latLngBounds(markers);
+                            mapGlobal.fitBounds(bounds, { padding: [30, 30], maxZoom: 18 });
+                        } else {
+                            focarLocalizacaoUsuario(mapGlobal);
+                        }
+
+                    } else {
+                        // Nenhuma rede com coordenadas mapeada, tenta o GPS do usuário
+                        focarLocalizacaoUsuario(mapGlobal);
+                    }
+                }, 100); 
+            }, 50); // Timeout inicial para o Modal abrir
+        };
+
+        // Função utilitária para não repetir código
+        function focarLocalizacaoUsuario(mapInstance) {
+            if(navigator.geolocation) {
+                navigator.geolocation.getCurrentPosition(p => {
+                    mapInstance.setView([p.coords.latitude, p.coords.longitude], 14);
+                }, () => {});
+            }
+        }
 
         window.mostrarMinhaLocalizacaoNoMapa = function() {
             window.vibrar();
@@ -952,28 +971,32 @@ window.abrirMapaGlobal = function() {
             const g = (lng && lng !== 'null' && lng !== 'undefined' && lng !== '') ? parseFloat(lng) : -50;
             const z = (lat && lat !== 'null' && lat !== 'undefined' && lat !== '') ? 18 : 4;
             
-            map = L.map('mapa-container', { center: [l, g], zoom: z });
+            // Usando timeout tático igual ao mapa global
+            setTimeout(() => {
+                map = L.map('mapa-container', { center: [l, g], zoom: z });
 
-            const osmLayer = L.tileLayer(TILE_OSM, { maxZoom: 19 });
-            const satLayer = L.tileLayer(TILE_SATELLITE, { maxZoom: 18 });
+                const osmLayer = L.tileLayer(TILE_OSM, { maxZoom: 19 });
+                const satLayer = L.tileLayer(TILE_SATELLITE, { maxZoom: 18 });
 
-            osmLayer.addTo(map);
+                osmLayer.addTo(map);
 
-            L.control.layers({
-                "Mapa Padrão (Leve)": osmLayer,
-                "Satélite (Visual)": satLayer
-            }).addTo(map);
-            
-            if(z === 18) {
-                mapMarker = L.marker([l, g], { draggable: true }).addTo(map);
-            }
-            
-            map.on('click', (e) => { 
-                if(mapMarker) mapMarker.setLatLng(e.latlng); 
-                else mapMarker = L.marker(e.latlng, { draggable: true }).addTo(map); 
-            });
-            
-            setTimeout(() => { if(map) map.invalidateSize(); }, 300);
+                L.control.layers({
+                    "Mapa Padrão": osmLayer,
+                    "Satélite": satLayer
+                }).addTo(map);
+                
+                setTimeout(() => {
+                    map.invalidateSize(true);
+                    if(z === 18) {
+                        mapMarker = L.marker([l, g], { draggable: true }).addTo(map);
+                    }
+                    
+                    map.on('click', (e) => { 
+                        if(mapMarker) mapMarker.setLatLng(e.latlng); 
+                        else mapMarker = L.marker(e.latlng, { draggable: true }).addTo(map); 
+                    });
+                }, 100);
+            }, 50);
         };
 
         window.aplicarCoordenadasNoMapa = function() {
