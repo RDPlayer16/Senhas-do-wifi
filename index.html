@@ -562,7 +562,6 @@
             window.atualizarContador(navigator.onLine ? 'sincronizando' : 'offline');
         };
 
-        // VERSÃO 3.9: BUG CORRIGIDO! A lógica manual e GPS coexistem em paz no Salvar Nova Rede
         window.salvarRedeLocal = async function() {
             window.vibrar(); 
             const s = document.getElementById('novoSSID').value.trim();
@@ -576,7 +575,6 @@
             let lat = null, lng = null;
             const btnSalvar = document.getElementById('btnSalvarModal');
 
-            // Lógica de Prioridade Restaurada
             if (coordManual) {
                 const partes = coordManual.split(',');
                 if (partes.length >= 2) {
@@ -814,6 +812,7 @@
             }, () => window.pararRadar(), {enableHighAccuracy: true});
         };
 
+        // CORREÇÃO: MATEMÁTICA DO MAPA GLOBAL E FLUXO DE RENDERIZAÇÃO DOM
         window.abrirMapaGlobal = function() {
             if (typeof L === 'undefined') { alert("Conecte-se à internet para carregar o mapa."); return; }
             document.getElementById('modalMapaGlobal').style.display = 'flex';
@@ -825,7 +824,8 @@
                 window.circuloUsuarioGlobal = null;
             }
             
-            mapGlobal = L.map('mapa-global-container', { center: [-15, -50], zoom: 4 }); 
+            // Inicia em background (ainda sem bounds)
+            mapGlobal = L.map('mapa-global-container').setView([-15, -50], 4); 
             
             const osmLayer = L.tileLayer(TILE_OSM, { maxZoom: 19 });
             const satLayer = L.tileLayer(TILE_SATELLITE, { maxZoom: 18 });
@@ -838,26 +838,42 @@
             }).addTo(mapGlobal);
             
             const redesComGeo = window.redesEmMemoria.filter(r => r.lat && r.lng && r.lat !== 'null');
-            if (redesComGeo.length > 0) {
-                const bounds = L.latLngBounds();
-                redesComGeo.forEach(r => {
-                    const lat = parseFloat(r.lat); const lng = parseFloat(r.lng);
-                    const marker = L.marker([lat, lng]).addTo(mapGlobal);
+            
+            // VITAL: O timeout aguarda o modal pintar o display: flex no navegador.
+            // Sem isso, o Leaflet acha que o mapa tem 0px de altura e o fitBounds falha.
+            setTimeout(() => {
+                mapGlobal.invalidateSize(); // Atualiza dimensões lógicas do mapa
+
+                if (redesComGeo.length > 0) {
+                    const markers = []; // Buffer de posições para cálculo do bounds
                     
-                    const popupHTML = `
-                        <div style="text-align: center; min-width: 140px; padding: 5px;">
-                            <b style="font-size: 15px; color: var(--primary); display: block; margin-bottom: 5px;">${r.ssid}</b>
-                            <span style="font-size: 13px; color: #555; display: block; margin-bottom: 12px; background: #f0f0f0; padding: 4px; border-radius: 4px;">${r.senha}</span>
-                            <button onclick="copy('${r.senha}')" style="background: var(--success); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 8px;">📋 Copiar Senha</button>
-                            <button onclick="fecharMapaGlobal(); abrirMapaParaRede('${r.id}', '${r.ssid}', '${r.lat}', '${r.lng}')" style="background: var(--geo); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">🗺️ Editar Local</button>
-                        </div>
-                    `;
-                    marker.bindPopup(popupHTML);
-                    bounds.extend([lat, lng]);
-                });
-                setTimeout(() => mapGlobal.fitBounds(bounds, { padding: [30, 30], maxZoom: 18 }), 300);
-            }
-            setTimeout(() => mapGlobal.invalidateSize(), 400);
+                    redesComGeo.forEach(r => {
+                        const lat = parseFloat(r.lat); const lng = parseFloat(r.lng);
+                        const marker = L.marker([lat, lng]).addTo(mapGlobal);
+                        
+                        const popupHTML = `
+                            <div style="text-align: center; min-width: 140px; padding: 5px;">
+                                <b style="font-size: 15px; color: var(--primary); display: block; margin-bottom: 5px;">${r.ssid}</b>
+                                <span style="font-size: 13px; color: #555; display: block; margin-bottom: 12px; background: #f0f0f0; padding: 4px; border-radius: 4px;">${r.senha}</span>
+                                <button onclick="copy('${r.senha}')" style="background: var(--success); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 8px;">📋 Copiar Senha</button>
+                                <button onclick="fecharMapaGlobal(); abrirMapaParaRede('${r.id}', '${r.ssid}', '${r.lat}', '${r.lng}')" style="background: var(--geo); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">🗺️ Editar Local</button>
+                            </div>
+                        `;
+                        marker.bindPopup(popupHTML);
+                        markers.push([lat, lng]);
+                    });
+
+                    // Aplica o cálculo matemático englobando 100% dos pinos
+                    const bounds = L.latLngBounds(markers);
+                    mapGlobal.fitBounds(bounds, { padding: [30, 30], maxZoom: 18 });
+
+                } else {
+                    // Fallback se banco não tiver geo: tenta focar no usuário
+                    navigator.geolocation.getCurrentPosition(p => {
+                        mapGlobal.setView([p.coords.latitude, p.coords.longitude], 14);
+                    }, () => {});
+                }
+            }, 300);
         };
 
         window.mostrarMinhaLocalizacaoNoMapa = function() {
