@@ -18,7 +18,7 @@ window.processarTextoQR = function(text, target) {
             }
         }
     } else {
-        window.mostrarToast("QR Code inválido para Wi-Fi.");
+        window.mostrarToast("QR Code lido, mas não é um formato Wi-Fi válido.");
     }
 };
 
@@ -41,7 +41,22 @@ window.abrirScannerCamera = function(target = 'novo') {
     }, () => {});
 };
 
-// CORREÇÃO: Blindagem para Androids/Xiaomi que não enviam MIME Type
+// UTILITÁRIO: Converte DataURL (Base64) puro para um Objeto File, limpando metadados nativos
+function dataURLtoFile(dataurl, filename) {
+    let arr = dataurl.split(','),
+        mime = arr[0].match(/:(.*?);/)[1],
+        bstr = atob(arr[1]), 
+        n = bstr.length, 
+        u8arr = new Uint8Array(n);
+        
+    while(n--){
+        u8arr[n] = bstr.charCodeAt(n);
+    }
+    
+    return new File([u8arr], filename, {type: mime});
+}
+
+// CORREÇÃO HYPEROS: Forçar extração via toDataURL em vez de toBlob para garantir limpeza
 function processarImagemParaQR(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -51,9 +66,9 @@ function processarImagemParaQR(file) {
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
                 
-                // 600px garante performance máxima em processadores mais simples
-                const MAX_WIDTH = 600;
-                const MAX_HEIGHT = 600;
+                // Dimensões táticas (400px a 600px é o ponto doce para leitura de QR sem travar a CPU)
+                const MAX_WIDTH = 500;
+                const MAX_HEIGHT = 500;
                 let width = img.width;
                 let height = img.height;
 
@@ -72,24 +87,20 @@ function processarImagemParaQR(file) {
                 canvas.width = width;
                 canvas.height = height;
                 
-                // Preenche com fundo branco absoluto para evitar bugs de PNG com Alpha do HyperOS
+                // Fundo branco para matar canais alpha invisíveis (Problema comum em prints cortados do Android)
                 ctx.fillStyle = "#FFFFFF";
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
-                
-                // Desenha o print redimensionado por cima
                 ctx.drawImage(img, 0, 0, width, height);
                 
-                // FORÇA o padrão JPEG universal, ignorando o formato bizarro que a galeria possa ter mandado
-                const safeMimeType = 'image/jpeg';
-                
-                canvas.toBlob((blob) => {
-                    if(blob) {
-                        // Cria um novo arquivo seguro
-                        resolve(new File([blob], "qr_processado_seguro.jpg", { type: safeMimeType }));
-                    } else {
-                        reject(new Error("Falha ao criar Blob do Canvas"));
-                    }
-                }, safeMimeType, 0.95);
+                try {
+                    // Extrai a imagem recodificada do zero, forçando JPEG.
+                    // Isso elimina os perfis de cor bugados da galeria MIUI.
+                    const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+                    const cleanFile = dataURLtoFile(dataUrl, "qr_hyperos_clean.jpg");
+                    resolve(cleanFile);
+                } catch (e) {
+                    reject(new Error("Falha na conversão DataURL."));
+                }
             };
             img.onerror = () => reject(new Error("Erro ao carregar imagem na memória"));
             img.src = event.target.result;
@@ -104,47 +115,42 @@ window.escanearImagemQR = async function(e, target = 'novo') {
     if (e.target.files.length == 0) return;
     const originalFile = e.target.files[0];
     
-    if (typeof Html5Qrcode === 'undefined') { alert("Conecte-se à internet para carregar o escâner."); return; }
-    window.mostrarToast("Processando print...");
+    if (typeof Html5Qrcode === 'undefined') { alert("Erro: Biblioteca QR não carregada."); return; }
+    window.mostrarToast("Processando imagem (Otimizado)...");
+
+    const tempDiv = document.createElement("div");
+    tempDiv.id = "temp-qr-reader";
+    tempDiv.style.position = "absolute";
+    tempDiv.style.top = "-9999px";
+    document.body.appendChild(tempDiv);
+
+    const html5QrCode = new Html5Qrcode("temp-qr-reader");
 
     try {
-        // 1. Passa a imagem pelo filtro do Canvas blindado
-        const optimizedFile = await processarImagemParaQR(originalFile);
-
-        const tempDiv = document.createElement("div");
-        tempDiv.id = "temp-qr-reader";
-        tempDiv.style.position = "absolute";
-        tempDiv.style.top = "-9999px";
-        document.body.appendChild(tempDiv);
-
-        const html5QrCode = new Html5Qrcode("temp-qr-reader");
-
-        // 2. Escaneia o arquivo JPG limpo e leve
-        html5QrCode.scanFile(optimizedFile, true)
-        .then(qrCodeMessage => {
-            window.processarTextoQR(qrCodeMessage, window.scanTarget);
-            html5QrCode.clear();
-            document.body.removeChild(tempDiv);
-        })
-        .catch(err => {
-            // Fallback: Se o otimizado falhar, tenta o arquivo original (PC geralmente cai aqui se a imagem for minúscula)
-            html5QrCode.scanFile(originalFile, true)
-            .then(msg => {
-                window.processarTextoQR(msg, window.scanTarget);
-                html5QrCode.clear();
-                document.body.removeChild(tempDiv);
-            })
-            .catch(finalErr => {
-                window.mostrarToast("Nenhum QR encontrado. Tente recortar as bordas da foto.");
-                html5QrCode.clear();
-                document.body.removeChild(tempDiv);
-            });
-        });
-
-    } catch (processError) {
-        window.mostrarToast("Erro interno: " + processError.message);
+        // TENTATIVA 1: Passar pelo filtro de lavagem de metadados
+        const cleanFile = await processarImagemParaQR(originalFile);
+        
+        const qrCodeMessage = await html5QrCode.scanFile(cleanFile, true);
+        window.processarTextoQR(qrCodeMessage, window.scanTarget);
+        
+    } catch (err1) {
+        console.warn("Falha no arquivo limpo:", err1);
+        
+        try {
+            // TENTATIVA 2 (Fallback): Enviar o arquivo bruto. 
+            const msg = await html5QrCode.scanFile(originalFile, false); // Tenta false (sem API nativa)
+            window.processarTextoQR(msg, window.scanTarget);
+            
+        } catch (err2) {
+            console.error("Falha no arquivo original:", err2);
+            window.mostrarToast("QR Code não reconhecido. Corte as bordas e tente novamente.");
+        }
     } finally {
-        e.target.value = ''; // Reseta o input file para permitir selecionar a mesma imagem de novo se precisar
+        html5QrCode.clear();
+        if(document.body.contains(tempDiv)) {
+            document.body.removeChild(tempDiv);
+        }
+        e.target.value = ''; // Reseta o input
     }
 };
 
