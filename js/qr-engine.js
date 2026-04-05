@@ -41,7 +41,7 @@ window.abrirScannerCamera = function(target = 'novo') {
     }, () => {});
 };
 
-// NOVO: Função para pré-processar e redimensionar prints pesados
+// CORREÇÃO: Blindagem para Androids/Xiaomi que não enviam MIME Type
 function processarImagemParaQR(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -51,9 +51,9 @@ function processarImagemParaQR(file) {
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
                 
-                // Define tamanho máximo (800px) para melhorar performance do escâner
-                const MAX_WIDTH = 800;
-                const MAX_HEIGHT = 800;
+                // 600px garante performance máxima em processadores mais simples
+                const MAX_WIDTH = 600;
+                const MAX_HEIGHT = 600;
                 let width = img.width;
                 let height = img.height;
 
@@ -72,19 +72,29 @@ function processarImagemParaQR(file) {
                 canvas.width = width;
                 canvas.height = height;
                 
-                // Desenha a imagem redimensionada
+                // Preenche com fundo branco absoluto para evitar bugs de PNG com Alpha do HyperOS
+                ctx.fillStyle = "#FFFFFF";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                // Desenha o print redimensionado por cima
                 ctx.drawImage(img, 0, 0, width, height);
                 
-                // Transforma o canvas em um blob para o html5-qrcode
+                // FORÇA o padrão JPEG universal, ignorando o formato bizarro que a galeria possa ter mandado
+                const safeMimeType = 'image/jpeg';
+                
                 canvas.toBlob((blob) => {
-                    if(blob) resolve(new File([blob], file.name, { type: file.type }));
-                    else reject(new Error("Falha ao criar Blob do Canvas"));
-                }, file.type, 0.95);
+                    if(blob) {
+                        // Cria um novo arquivo seguro
+                        resolve(new File([blob], "qr_processado_seguro.jpg", { type: safeMimeType }));
+                    } else {
+                        reject(new Error("Falha ao criar Blob do Canvas"));
+                    }
+                }, safeMimeType, 0.95);
             };
-            img.onerror = () => reject(new Error("Erro ao carregar imagem no Canvas"));
+            img.onerror = () => reject(new Error("Erro ao carregar imagem na memória"));
             img.src = event.target.result;
         };
-        reader.onerror = () => reject(new Error("Erro ao ler arquivo"));
+        reader.onerror = () => reject(new Error("Erro ao ler arquivo do celular"));
         reader.readAsDataURL(file);
     });
 }
@@ -98,7 +108,7 @@ window.escanearImagemQR = async function(e, target = 'novo') {
     window.mostrarToast("Processando print...");
 
     try {
-        // 1. Passa a imagem pelo pré-processador para otimizar resolução
+        // 1. Passa a imagem pelo filtro do Canvas blindado
         const optimizedFile = await processarImagemParaQR(originalFile);
 
         const tempDiv = document.createElement("div");
@@ -109,7 +119,7 @@ window.escanearImagemQR = async function(e, target = 'novo') {
 
         const html5QrCode = new Html5Qrcode("temp-qr-reader");
 
-        // 2. Tenta escanear o arquivo otimizado
+        // 2. Escaneia o arquivo JPG limpo e leve
         html5QrCode.scanFile(optimizedFile, true)
         .then(qrCodeMessage => {
             window.processarTextoQR(qrCodeMessage, window.scanTarget);
@@ -117,8 +127,7 @@ window.escanearImagemQR = async function(e, target = 'novo') {
             document.body.removeChild(tempDiv);
         })
         .catch(err => {
-            // Fallback silencioso: se falhar, tenta ler o arquivo original puro sem resize
-            console.log("Falha no arquivo otimizado. Tentando arquivo original...");
+            // Fallback: Se o otimizado falhar, tenta o arquivo original (PC geralmente cai aqui se a imagem for minúscula)
             html5QrCode.scanFile(originalFile, true)
             .then(msg => {
                 window.processarTextoQR(msg, window.scanTarget);
@@ -133,9 +142,9 @@ window.escanearImagemQR = async function(e, target = 'novo') {
         });
 
     } catch (processError) {
-        window.mostrarToast("Erro ao processar imagem.");
+        window.mostrarToast("Erro interno: " + processError.message);
     } finally {
-        e.target.value = ''; // Reseta o input file
+        e.target.value = ''; // Reseta o input file para permitir selecionar a mesma imagem de novo se precisar
     }
 };
 
