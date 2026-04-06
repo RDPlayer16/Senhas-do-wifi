@@ -42,7 +42,43 @@ window.abrirScannerCamera = function(target = 'novo') {
     }, () => {});
 };
 
-// MOTOR DE TRATAMENTO AGRESSIVO PARA PROCESSADORES SEM ACELERAÇÃO
+// FILTRO DE NITIDEZ (SHARPEN) - Destrói os artefatos de compressão da MIUI
+function sharpenCanvas(ctx, w, h, mix) {
+    const weights = [0, -1, 0, -1, 5, -1, 0, -1, 0];
+    const katet = Math.round(Math.sqrt(weights.length));
+    const half = (katet * 0.5) | 0;
+    const dstData = ctx.createImageData(w, h);
+    const dstBuff = dstData.data;
+    const srcBuff = ctx.getImageData(0, 0, w, h).data;
+    const ystep = w * 4;
+
+    for (let y = 1; y < h - 1; y++) {
+        for (let x = 1; x < w - 1; x++) {
+            const dstOff = (y * w + x) * 4;
+            let r = 0, g = 0, b = 0;
+
+            for (let cy = 0; cy < katet; cy++) {
+                for (let cx = 0; cx < katet; cx++) {
+                    const scy = y + cy - half;
+                    const scx = x + cx - half;
+                    const srcOff = (scy * w + scx) * 4;
+                    const wt = weights[cy * katet + cx];
+
+                    r += srcBuff[srcOff] * wt;
+                    g += srcBuff[srcOff + 1] * wt;
+                    b += srcBuff[srcOff + 2] * wt;
+                }
+            }
+
+            dstBuff[dstOff] = r * mix + srcBuff[dstOff] * (1 - mix);
+            dstBuff[dstOff + 1] = g * mix + srcBuff[dstOff + 1] * (1 - mix);
+            dstBuff[dstOff + 2] = b * mix + srcBuff[dstOff + 2] * (1 - mix);
+            dstBuff[dstOff + 3] = srcBuff[dstOff + 3];
+        }
+    }
+    ctx.putImageData(dstData, 0, 0);
+}
+
 function processarImagemParaQR(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -52,12 +88,12 @@ function processarImagemParaQR(file) {
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
                 
-                const MAX_WIDTH = 600;
-                const MAX_HEIGHT = 600;
+                // Redimensionamento seguro (Não muito pequeno, não muito grande)
+                const MAX_WIDTH = 800;
+                const MAX_HEIGHT = 800;
                 let width = img.width;
                 let height = img.height;
 
-                // Mantém proporção
                 if (width > height) {
                     if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
                 } else {
@@ -67,36 +103,22 @@ function processarImagemParaQR(file) {
                 canvas.width = Math.floor(width);
                 canvas.height = Math.floor(height);
                 
+                // Fundo branco e desenho normal
                 ctx.fillStyle = "#FFFFFF";
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                 
-                // --- ALGORITMO DE BINARIZAÇÃO (THRESHOLD) ---
-                // Força a imagem a ficar Preto e Branco puro. Remove ruído para o parser JS.
-                const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-                const data = imageData.data;
-                for (let i = 0; i < data.length; i += 4) {
-                    // Calcula luminosidade do pixel
-                    const avg = (data[i] + data[i + 1] + data[i + 2]) / 3;
-                    // Define o ponto de corte (128 = meio termo)
-                    const color = avg > 128 ? 255 : 0; 
-                    
-                    data[i] = color;     // Red
-                    data[i + 1] = color; // Green
-                    data[i + 2] = color; // Blue
-                    // data[i + 3] é o Alpha, não mexemos para manter 100% opaco
-                }
-                ctx.putImageData(imageData, 0, 0);
-                // ---------------------------------------------
-                
+                // Aplica a nitidez matemática para consertar o borrado da galeria MIUI
+                sharpenCanvas(ctx, canvas.width, canvas.height, 1.0); 
+
                 try {
-                    // Exporta como JPEG sem compressão destrutiva
-                    const dataUrl = canvas.toDataURL('image/jpeg', 1.0);
+                    // PNG não possui compressão destrutiva, garantindo que a nitidez não será perdida no PWA
+                    const dataUrl = canvas.toDataURL('image/png');
                     let arr = dataUrl.split(','), mime = arr[0].match(/:(.*?);/)[1], bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
                     while(n--) { u8arr[n] = bstr.charCodeAt(n); }
-                    resolve(new File([u8arr], "qr_binario.jpg", {type: mime}));
+                    resolve(new File([u8arr], "qr_sharp.png", {type: mime}));
                 } catch (e) {
-                    reject(new Error("Falha na conversão Binária."));
+                    reject(new Error("Falha na conversão final."));
                 }
             };
             img.onerror = () => reject(new Error("Erro ao carregar imagem"));
@@ -117,27 +139,27 @@ window.escanearImagemQR = async function(e, target = 'novo') {
     window.fecharModal(); 
     window.fecharModalEditar();
     document.getElementById('modalScanner').style.display = 'flex';
-    document.getElementById('reader').innerHTML = '<div style="padding: 30px; text-align: center; color: white;">Extraindo dados binários...</div>';
+    document.getElementById('reader').innerHTML = '<div style="padding: 30px; text-align: center; color: white;">Extraindo dados nítidos...</div>';
     
-    window.mostrarToast("Analisando contraste...");
+    window.mostrarToast("Restaurando nitidez da imagem...");
 
     const html5QrCode = new Html5Qrcode("reader");
 
     try {
-        // Tenta com a imagem Preto e Branco (Foco em CPUs fracas)
-        const pureBlackWhiteFile = await processarImagemParaQR(originalFile);
-        const qrCodeMessage = await html5QrCode.scanFile(pureBlackWhiteFile, true);
+        // Tenta com a imagem afiada e limpa em formato PNG (Para combater o blur do HyperOS)
+        const sharpFile = await processarImagemParaQR(originalFile);
+        const qrCodeMessage = await html5QrCode.scanFile(sharpFile, true);
         window.processarTextoQR(qrCodeMessage, window.scanTarget);
         
     } catch (err1) {
-        console.warn("Falha no arquivo PB. Tentando bruto.", err1);
+        console.warn("Falha no arquivo PNG afiado. Tentando bruto.", err1);
         try {
-            // Tenta bruto (Foco em imagens já limpas/aparelhos fortes)
+            // Fallback bruto.
             const msg = await html5QrCode.scanFile(originalFile, true); 
             window.processarTextoQR(msg, window.scanTarget);
         } catch (err2) {
             console.error("Falha total:", err2);
-            window.mostrarToast("QR Code não reconhecido. Certifique-se que o código está nítido.");
+            window.mostrarToast("QR Code não reconhecido. A compressão da galeria destruiu o código.");
         }
     } finally {
         html5QrCode.clear();
