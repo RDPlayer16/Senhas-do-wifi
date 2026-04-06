@@ -27,6 +27,8 @@ window.abrirScannerCamera = function(target = 'novo') {
     if (typeof Html5QrcodeScanner === 'undefined') { alert("Conecte-se à internet para usar o scanner."); return; }
     window.fecharModal(); 
     window.fecharModalEditar();
+    
+    // Deixa o modal de scan visível e com dimensões reais
     document.getElementById('modalScanner').style.display = 'flex';
     
     window.scannerInstancia = new Html5QrcodeScanner("reader", { 
@@ -41,22 +43,7 @@ window.abrirScannerCamera = function(target = 'novo') {
     }, () => {});
 };
 
-// UTILITÁRIO: Converte DataURL (Base64) puro para um Objeto File, limpando metadados nativos
-function dataURLtoFile(dataurl, filename) {
-    let arr = dataurl.split(','),
-        mime = arr[0].match(/:(.*?);/)[1],
-        bstr = atob(arr[1]), 
-        n = bstr.length, 
-        u8arr = new Uint8Array(n);
-        
-    while(n--){
-        u8arr[n] = bstr.charCodeAt(n);
-    }
-    
-    return new File([u8arr], filename, {type: mime});
-}
-
-// CORREÇÃO HYPEROS: Forçar extração via toDataURL em vez de toBlob para garantir limpeza
+// Limpa metadados e redimensiona pesados prints do HyperOS
 function processarImagemParaQR(file) {
     return new Promise((resolve, reject) => {
         const reader = new FileReader();
@@ -66,46 +53,37 @@ function processarImagemParaQR(file) {
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
                 
-                // Dimensões táticas (400px a 600px é o ponto doce para leitura de QR sem travar a CPU)
                 const MAX_WIDTH = 500;
                 const MAX_HEIGHT = 500;
                 let width = img.width;
                 let height = img.height;
 
                 if (width > height) {
-                    if (width > MAX_WIDTH) {
-                        height *= MAX_WIDTH / width;
-                        width = MAX_WIDTH;
-                    }
+                    if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
                 } else {
-                    if (height > MAX_HEIGHT) {
-                        width *= MAX_HEIGHT / height;
-                        height = MAX_HEIGHT;
-                    }
+                    if (height > MAX_HEIGHT) { width *= MAX_HEIGHT / height; height = MAX_HEIGHT; }
                 }
 
                 canvas.width = width;
                 canvas.height = height;
                 
-                // Fundo branco para matar canais alpha invisíveis (Problema comum em prints cortados do Android)
                 ctx.fillStyle = "#FFFFFF";
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 ctx.drawImage(img, 0, 0, width, height);
                 
                 try {
-                    // Extrai a imagem recodificada do zero, forçando JPEG.
-                    // Isso elimina os perfis de cor bugados da galeria MIUI.
                     const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
-                    const cleanFile = dataURLtoFile(dataUrl, "qr_hyperos_clean.jpg");
-                    resolve(cleanFile);
+                    let arr = dataUrl.split(','), mime = arr[0].match(/:(.*?);/)[1], bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
+                    while(n--) { u8arr[n] = bstr.charCodeAt(n); }
+                    resolve(new File([u8arr], "qr_hyperos_clean.jpg", {type: mime}));
                 } catch (e) {
                     reject(new Error("Falha na conversão DataURL."));
                 }
             };
-            img.onerror = () => reject(new Error("Erro ao carregar imagem na memória"));
+            img.onerror = () => reject(new Error("Erro ao carregar imagem"));
             img.src = event.target.result;
         };
-        reader.onerror = () => reject(new Error("Erro ao ler arquivo do celular"));
+        reader.onerror = () => reject(new Error("Erro ao ler arquivo"));
         reader.readAsDataURL(file);
     });
 }
@@ -116,41 +94,42 @@ window.escanearImagemQR = async function(e, target = 'novo') {
     const originalFile = e.target.files[0];
     
     if (typeof Html5Qrcode === 'undefined') { alert("Erro: Biblioteca QR não carregada."); return; }
-    window.mostrarToast("Processando imagem (Otimizado)...");
+    
+    // O pulo do gato: Abre o modal de câmera (mesmo para arquivo) para garantir que a div #reader tenha dimensões físicas no DOM do Redmi
+    window.fecharModal(); 
+    window.fecharModalEditar();
+    document.getElementById('modalScanner').style.display = 'flex';
+    document.getElementById('reader').innerHTML = '<div style="padding: 30px; text-align: center; color: white;">Processando arquivo...</div>';
+    
+    window.mostrarToast("Processando imagem...");
 
-    const tempDiv = document.createElement("div");
-    tempDiv.id = "temp-qr-reader";
-    tempDiv.style.position = "absolute";
-    tempDiv.style.top = "-9999px";
-    document.body.appendChild(tempDiv);
-
-    const html5QrCode = new Html5Qrcode("temp-qr-reader");
+    // Usa o container oficial com dimensões já pintadas
+    const html5QrCode = new Html5Qrcode("reader");
 
     try {
-        // TENTATIVA 1: Passar pelo filtro de lavagem de metadados
         const cleanFile = await processarImagemParaQR(originalFile);
         
+        // Usa a engine oficial para ler o arquivo limpo
         const qrCodeMessage = await html5QrCode.scanFile(cleanFile, true);
         window.processarTextoQR(qrCodeMessage, window.scanTarget);
         
     } catch (err1) {
-        console.warn("Falha no arquivo limpo:", err1);
+        console.warn("Falha no arquivo limpo, tentando bruto:", err1);
         
         try {
-            // TENTATIVA 2 (Fallback): Enviar o arquivo bruto. 
-            const msg = await html5QrCode.scanFile(originalFile, false); // Tenta false (sem API nativa)
+            // Fallback para arquivo original (ex: S23 ou PC que não precisam de limpeza)
+            const msg = await html5QrCode.scanFile(originalFile, false); 
             window.processarTextoQR(msg, window.scanTarget);
             
         } catch (err2) {
             console.error("Falha no arquivo original:", err2);
-            window.mostrarToast("QR Code não reconhecido. Corte as bordas e tente novamente.");
+            window.mostrarToast("QR Code não reconhecido. Corte as bordas da foto.");
         }
     } finally {
         html5QrCode.clear();
-        if(document.body.contains(tempDiv)) {
-            document.body.removeChild(tempDiv);
-        }
-        e.target.value = ''; // Reseta o input
+        // Volta para o modal de origem
+        window.fecharScanner(true);
+        e.target.value = '';
     }
 };
 
@@ -159,6 +138,7 @@ window.fecharScanner = function(voltarParaModalAnterior = false) {
         window.scannerInstancia.clear(); 
     } 
     document.getElementById('modalScanner').style.display = 'none'; 
+    document.getElementById('reader').innerHTML = ''; // Limpa resquícios
     
     if (voltarParaModalAnterior) {
         if (window.scanTarget === 'editar' && window.redeEditandoAtual) {
