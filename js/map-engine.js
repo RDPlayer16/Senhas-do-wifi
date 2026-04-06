@@ -25,20 +25,24 @@ window.focarLocalizacaoUsuario = function(mapInstance) {
     }
 };
 
-window.abrirMapaGlobal = function() {
-    if (typeof L === 'undefined') { alert("Conecte-se à internet para carregar o mapa."); return; }
+window.abrirMapaGlobal = async function() {
+    if (typeof L === 'undefined') { alert("Ligue-se à internet para carregar o mapa."); return; }
     
     const modal = document.getElementById('modalMapaGlobal');
+    // 1. Abre o modal imediatamente
     modal.style.display = 'flex';
     
-    if(window.mapGlobal) { 
+    // Limpeza de instâncias antigas da memória
+    if (window.mapGlobal) { 
         window.mapGlobal.remove(); 
         document.getElementById('mapa-global-container').innerHTML = '';
         window.marcadorUsuarioGlobal = null;
         window.circuloUsuarioGlobal = null;
     }
 
-    window.lerDoIndexedDB().then(dadosFrescos => {
+    try {
+        // 2. Extrai os dados em segundo plano
+        const dadosFrescos = await window.lerDoIndexedDB();
         const redesValidas = (dadosFrescos || window.redesEmMemoria).filter(r => {
             return r.lat != null && r.lng != null && 
                    r.lat !== 'null' && r.lng !== 'null' &&
@@ -46,59 +50,64 @@ window.abrirMapaGlobal = function() {
                    r.lat !== '' && r.lng !== '';
         });
 
-        return new Promise(resolve => {
-            const checkSize = () => {
-                const h = document.getElementById('mapa-global-container').clientHeight;
-                if (h > 0) resolve(redesValidas);
-                else requestAnimationFrame(checkSize);
-            };
-            checkSize();
-        });
-    }).then(redesComGeo => {
-        window.mapGlobal = L.map('mapa-global-container').setView([-15, -50], 4); 
-        
-        const osmLayer = L.tileLayer(window.TILE_OSM, { maxZoom: 19 });
-        const satLayer = L.tileLayer(window.TILE_SATELLITE, { maxZoom: 18 });
-        osmLayer.addTo(window.mapGlobal);
+        // 3. A SOLUÇÃO: Aguardar 350ms para garantir que o modal está 100% desenhado no telemóvel
+        setTimeout(() => {
+            // Instancia o mapa só agora, quando a div já tem altura e largura reais
+            window.mapGlobal = L.map('mapa-global-container').setView([-15, -50], 4); 
+            
+            const osmLayer = L.tileLayer(window.TILE_OSM, { maxZoom: 19 });
+            const satLayer = L.tileLayer(window.TILE_SATELLITE, { maxZoom: 18 });
+            osmLayer.addTo(window.mapGlobal);
 
-        L.control.layers({
-            "Mapa Padrão": osmLayer,
-            "Satélite": satLayer
-        }).addTo(window.mapGlobal);
-        
-        window.mapGlobal.invalidateSize(); 
+            L.control.layers({
+                "Mapa Padrão": osmLayer,
+                "Satélite": satLayer
+            }).addTo(window.mapGlobal);
 
-        if (redesComGeo.length > 0) {
             const markers = []; 
             
-            redesComGeo.forEach(r => {
-                const lat = parseFloat(r.lat); const lng = parseFloat(r.lng);
-                if(isNaN(lat) || isNaN(lng)) return;
+            if (redesValidas.length > 0) {
+                redesValidas.forEach(r => {
+                    const lat = parseFloat(r.lat); 
+                    const lng = parseFloat(r.lng);
+                    if(isNaN(lat) || isNaN(lng)) return;
 
-                const marker = L.marker([lat, lng]).addTo(window.mapGlobal);
-                
-                const popupHTML = `
-                    <div style="text-align: center; min-width: 140px; padding: 5px;">
-                        <b style="font-size: 15px; color: var(--primary); display: block; margin-bottom: 5px;">${r.ssid}</b>
-                        <span style="font-size: 13px; color: #555; display: block; margin-bottom: 12px; background: #f0f0f0; padding: 4px; border-radius: 4px;">${r.senha}</span>
-                        <button onclick="window.copy('${r.senha}')" style="background: var(--success); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 8px;">📋 Copiar Senha</button>
-                        <button onclick="window.fecharMapaGlobal(); window.abrirMapaParaRede('${r.id}', '${r.ssid}', '${r.lat}', '${r.lng}')" style="background: var(--geo); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">🗺️ Editar Local</button>
-                    </div>
-                `;
-                marker.bindPopup(popupHTML);
-                markers.push([lat, lng]);
-            });
+                    const marker = L.marker([lat, lng]).addTo(window.mapGlobal);
+                    
+                    const popupHTML = `
+                        <div style="text-align: center; min-width: 140px; padding: 5px;">
+                            <b style="font-size: 15px; color: var(--primary); display: block; margin-bottom: 5px;">${r.ssid}</b>
+                            <span style="font-size: 13px; color: #555; display: block; margin-bottom: 12px; background: #f0f0f0; padding: 4px; border-radius: 4px;">${r.senha}</span>
+                            <button onclick="window.copy('${r.senha}')" style="background: var(--success); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 8px;">📋 Copiar Senha</button>
+                            <button onclick="window.fecharMapaGlobal(); window.abrirMapaParaRede('${r.id}', '${r.ssid}', '${r.lat}', '${r.lng}')" style="background: var(--geo); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">🗺️ Editar Local</button>
+                        </div>
+                    `;
+                    marker.bindPopup(popupHTML);
+                    markers.push([lat, lng]);
+                });
 
-            if(markers.length > 0) {
-                const bounds = L.latLngBounds(markers);
-                window.mapGlobal.flyToBounds(bounds, { padding: [40, 40], maxZoom: 18, duration: 0.5 });
+                if (markers.length > 0) {
+                    const bounds = L.latLngBounds(markers);
+                    // O fitBounds agora funciona perfeitamente pois o mapa conhece o seu tamanho exato
+                    window.mapGlobal.fitBounds(bounds, { padding: [40, 40], maxZoom: 18 });
+                } else {
+                    window.focarLocalizacaoUsuario(window.mapGlobal);
+                }
             } else {
                 window.focarLocalizacaoUsuario(window.mapGlobal);
             }
-        } else {
-            window.focarLocalizacaoUsuario(window.mapGlobal);
-        }
-    });
+
+            // Uma última verificação de segurança assíncrona para motores WebView mais lentos
+            setTimeout(() => {
+                if (window.mapGlobal) window.mapGlobal.invalidateSize(true);
+            }, 100);
+
+        }, 350); 
+
+    } catch (e) {
+        console.error("Erro ao ler dados do mapa:", e);
+        window.mostrarToast("Erro ao processar as redes no mapa.");
+    }
 };
 
 window.mostrarMinhaLocalizacaoNoMapa = function() {
