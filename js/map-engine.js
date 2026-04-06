@@ -25,14 +25,13 @@ window.focarLocalizacaoUsuario = function(mapInstance) {
     }
 };
 
-window.abrirMapaGlobal = async function() {
-    if (typeof L === 'undefined') { alert("Ligue-se à internet para carregar o mapa."); return; }
+window.abrirMapaGlobal = function() {
+    if (typeof L === 'undefined') { alert("Conecte-se à internet para carregar o mapa."); return; }
     
     const modal = document.getElementById('modalMapaGlobal');
-    // 1. Abre o modal imediatamente
     modal.style.display = 'flex';
     
-    // Limpeza de instâncias antigas da memória
+    // Limpeza rigorosa da memória visual do mapa anterior
     if (window.mapGlobal) { 
         window.mapGlobal.remove(); 
         document.getElementById('mapa-global-container').innerHTML = '';
@@ -40,74 +39,78 @@ window.abrirMapaGlobal = async function() {
         window.circuloUsuarioGlobal = null;
     }
 
-    try {
-        // 2. Extrai os dados em segundo plano
-        const dadosFrescos = await window.lerDoIndexedDB();
-        const redesValidas = (dadosFrescos || window.redesEmMemoria).filter(r => {
-            return r.lat != null && r.lng != null && 
-                   r.lat !== 'null' && r.lng !== 'null' &&
-                   r.lat !== 'undefined' && r.lng !== 'undefined' &&
-                   r.lat !== '' && r.lng !== '';
+    // Atraso táctico para o DOM do WebView assentar o modal
+    setTimeout(() => {
+        window.mapGlobal = L.map('mapa-global-container').setView([-15, -50], 4); 
+        
+        const osmLayer = L.tileLayer(window.TILE_OSM, { maxZoom: 19 });
+        const satLayer = L.tileLayer(window.TILE_SATELLITE, { maxZoom: 18 });
+        osmLayer.addTo(window.mapGlobal);
+
+        L.control.layers({
+            "Mapa Padrão": osmLayer,
+            "Satélite": satLayer
+        }).addTo(window.mapGlobal);
+
+        // FORÇA O USO DA MEMÓRIA VISUAL: Se está na tela, vai para o mapa.
+        const redesComGeo = window.redesEmMemoria.filter(r => {
+            return r.lat && r.lng && String(r.lat).trim() !== 'null' && String(r.lng).trim() !== 'null' && String(r.lat).trim() !== '';
         });
 
-        // 3. A SOLUÇÃO: Aguardar 350ms para garantir que o modal está 100% desenhado no telemóvel
-        setTimeout(() => {
-            // Instancia o mapa só agora, quando a div já tem altura e largura reais
-            window.mapGlobal = L.map('mapa-global-container').setView([-15, -50], 4); 
-            
-            const osmLayer = L.tileLayer(window.TILE_OSM, { maxZoom: 19 });
-            const satLayer = L.tileLayer(window.TILE_SATELLITE, { maxZoom: 18 });
-            osmLayer.addTo(window.mapGlobal);
+        const markers = []; 
+        
+        if (redesComGeo.length > 0) {
+            redesComGeo.forEach(r => {
+                // BLINDAGEM DE DADOS: Troca vírgulas por pontos caso o GPS tenha sido salvo com formato de teclado PT-BR
+                let latVal = String(r.lat).replace(',', '.');
+                let lngVal = String(r.lng).replace(',', '.');
 
-            L.control.layers({
-                "Mapa Padrão": osmLayer,
-                "Satélite": satLayer
-            }).addTo(window.mapGlobal);
+                const lat = parseFloat(latVal); 
+                const lng = parseFloat(lngVal);
+                
+                // Se a conversão falhar e não for número, aborta este marcador silenciosamente
+                if(isNaN(lat) || isNaN(lng)) return;
 
-            const markers = []; 
-            
-            if (redesValidas.length > 0) {
-                redesValidas.forEach(r => {
-                    const lat = parseFloat(r.lat); 
-                    const lng = parseFloat(r.lng);
-                    if(isNaN(lat) || isNaN(lng)) return;
+                const marker = L.marker([lat, lng]).addTo(window.mapGlobal);
+                
+                const popupHTML = `
+                    <div style="text-align: center; min-width: 140px; padding: 5px;">
+                        <b style="font-size: 15px; color: var(--primary); display: block; margin-bottom: 5px;">${r.ssid}</b>
+                        <span style="font-size: 13px; color: #555; display: block; margin-bottom: 12px; background: #f0f0f0; padding: 4px; border-radius: 4px;">${r.senha}</span>
+                        <button onclick="window.copy('${r.senha}')" style="background: var(--success); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 8px;">📋 Copiar Senha</button>
+                        <button onclick="window.fecharMapaGlobal(); window.abrirMapaParaRede('${r.id}', '${r.ssid}', '${r.lat}', '${r.lng}')" style="background: var(--geo); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">🗺️ Editar Local</button>
+                    </div>
+                `;
+                marker.bindPopup(popupHTML);
+                markers.push([lat, lng]);
+            });
+        }
 
-                    const marker = L.marker([lat, lng]).addTo(window.mapGlobal);
-                    
-                    const popupHTML = `
-                        <div style="text-align: center; min-width: 140px; padding: 5px;">
-                            <b style="font-size: 15px; color: var(--primary); display: block; margin-bottom: 5px;">${r.ssid}</b>
-                            <span style="font-size: 13px; color: #555; display: block; margin-bottom: 12px; background: #f0f0f0; padding: 4px; border-radius: 4px;">${r.senha}</span>
-                            <button onclick="window.copy('${r.senha}')" style="background: var(--success); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 8px;">📋 Copiar Senha</button>
-                            <button onclick="window.fecharMapaGlobal(); window.abrirMapaParaRede('${r.id}', '${r.ssid}', '${r.lat}', '${r.lng}')" style="background: var(--geo); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">🗺️ Editar Local</button>
-                        </div>
-                    `;
-                    marker.bindPopup(popupHTML);
-                    markers.push([lat, lng]);
-                });
-
-                if (markers.length > 0) {
-                    const bounds = L.latLngBounds(markers);
-                    // O fitBounds agora funciona perfeitamente pois o mapa conhece o seu tamanho exato
+        // Processamento matemático dos limites
+        if (markers.length > 0) {
+            try {
+                const bounds = L.latLngBounds(markers);
+                if (bounds.isValid()) {
+                    window.mapGlobal.invalidateSize(true);
                     window.mapGlobal.fitBounds(bounds, { padding: [40, 40], maxZoom: 18 });
                 } else {
                     window.focarLocalizacaoUsuario(window.mapGlobal);
                 }
-            } else {
+            } catch (error) {
                 window.focarLocalizacaoUsuario(window.mapGlobal);
             }
+        } else {
+            // Se as redes existiam mas não tinham GPS válido
+            window.focarLocalizacaoUsuario(window.mapGlobal);
+            window.mostrarToast("Não há redes com GPS válido para exibir.");
+        }
 
-            // Uma última verificação de segurança assíncrona para motores WebView mais lentos
-            setTimeout(() => {
-                if (window.mapGlobal) window.mapGlobal.invalidateSize(true);
-            }, 100);
+        // Segurança final para recalcular o quadro após animações do SO
+        setTimeout(() => {
+            if (window.mapGlobal) window.mapGlobal.invalidateSize(true);
+        }, 150);
 
-        }, 350); 
-
-    } catch (e) {
-        console.error("Erro ao ler dados do mapa:", e);
-        window.mostrarToast("Erro ao processar as redes no mapa.");
-    }
+    }, 300); // 300ms de atraso bruto para renderização do DOM
 };
 
 window.mostrarMinhaLocalizacaoNoMapa = function() {
