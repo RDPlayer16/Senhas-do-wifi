@@ -102,17 +102,22 @@
         <div class="modal-content">
             <h3>➕ Nova Rede Wi-Fi</h3>
             <div style="display:flex; gap: 8px; margin-bottom: 5px;">
-                <button class="btn-scan" onclick="window.abrirScannerCamera('novo');">📷 Escanear QR</button>
-                <button class="btn-scan" style="background: #8B5CF6;" onclick="document.getElementById('qrFileInput').click();">🖼️ Galeria</button>
+                <button class="btn-scan" style="flex: 1; font-size: 13px;" onclick="window.abrirScannerCamera('novo');">📷 Escanear QR</button>
+                <button class="btn-scan" style="flex: 1; font-size: 13px; background: #8B5CF6;" onclick="document.getElementById('qrFileInput').click();">🖼️ Galeria</button>
             </div>
-            <input type="file" id="qrFileInput" accept="image/*" style="display:none;" onchange="window.escanearImagemQR(event, 'novo')">
+            
+            <input type="file" id="qrFileInput" accept="image/png, image/jpeg, image/webp" style="display:none;" onchange="window.escanearImagemQR(event, 'novo')">
+            
             <div class="divider">OU DIGITE MANUALMENTE</div>
             <input type="text" id="novoSSID" placeholder="Nome da Rede (SSID)" oninput="window.checarDuplicadoModal()">
             <input type="text" id="novaSenha" placeholder="Senha" oninput="window.checarDuplicadoModal()">
+            
             <label style="font-size: 14px; display: flex; align-items: center; gap: 8px; margin-top: 5px;" id="containerCheckLocalizacao">
                 <input type="checkbox" id="checkLocalizacao" checked> Usar GPS (Alta Precisão)
             </label>
-            <input type="text" id="novaCoordenadaManual" placeholder="Lat, Lng (Opcional)" style="margin-top: 2px;">
+            
+            <input type="text" id="novaCoordenadaManual" placeholder="Ou cole coordenadas: -23.55, -46.63 (Opcional)" style="margin-top: 2px; font-size: 13px;">
+            
             <div id="msgDuplicadoModal" class="aviso-duplicado"></div>
             <button id="btnAdicionarGeo" class="btn-geo" style="display:none;" onclick="window.atualizarGeoRedeExistente();">📍 Adicionar GPS Agora</button>
             <div style="display:flex; gap:10px; justify-content: flex-end; margin-top:10px;">
@@ -125,6 +130,13 @@
     <div id="modalEditarRede" class="modal-overlay">
         <div class="modal-content">
             <h3>✏️ Editar Rede</h3>
+            
+            <div style="display:flex; gap: 8px; margin-bottom: 10px;">
+                <button class="btn-scan" style="flex: 1; font-size: 13px;" onclick="window.abrirScannerCamera('editar');">📷 Escanear QR</button>
+                <button class="btn-scan" style="flex: 1; font-size: 13px; background: #8B5CF6;" onclick="document.getElementById('editQrFileInput').click();">🖼️ Galeria</button>
+            </div>
+            <input type="file" id="editQrFileInput" accept="image/png, image/jpeg, image/webp" style="display:none;" onchange="window.escanearImagemQR(event, 'editar')">
+
             <input type="text" id="editSSID" placeholder="Nome da Rede (SSID)">
             <input type="text" id="editSenha" placeholder="Nova Senha">
             <div style="display:flex; justify-content: space-between; margin-top:15px; gap: 10px;">
