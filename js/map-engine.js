@@ -1,15 +1,14 @@
 // =========================================================
-// 1. REGISTRO IMEDIATO (FUNÇÕES DE UI)
+// 1. FUNÇÕES DE INTERFACE (DEFINIDAS PRIMEIRO)
 // =========================================================
-
 window.fecharMapa = function() { 
     const m = document.getElementById('modalMapa');
-    if (m) m.style.display = 'none'; 
+    if(m) m.style.display = 'none'; 
 };
 
 window.fecharMapaGlobal = function() { 
     const m = document.getElementById('modalMapaGlobal');
-    if (m) m.style.display = 'none'; 
+    if(m) m.style.display = 'none'; 
     if (window.marcadorUsuarioGlobal && window.mapGlobal) {
         window.mapGlobal.removeLayer(window.marcadorUsuarioGlobal);
         window.marcadorUsuarioGlobal = null;
@@ -17,7 +16,7 @@ window.fecharMapaGlobal = function() {
 };
 
 // =========================================================
-// 2. CONFIGURAÇÕES E ESTADO
+// 2. CONFIGURAÇÕES E PARSING
 // =========================================================
 window.map = null;
 window.mapMarker = null;
@@ -31,7 +30,6 @@ window.parseCoord = function(val) {
     return parseFloat(String(val).replace(/\s/g, '').replace(',', '.'));
 };
 
-// Correção de ícones apenas quando solicitado
 window.corrigirIconesLeaflet = function() {
     if (typeof L !== 'undefined' && L.Icon && L.Icon.Default) {
         delete L.Icon.Default.prototype._getIconUrl;
@@ -52,20 +50,18 @@ window.calcularDistancia = function(la1, lo1, la2, lo2) {
 };
 
 // =========================================================
-// 3. FUNÇÕES DO MAPA GLOBAL
+// 3. MOTOR DO MAPA GERAL (COM FIX DE RENDERIZAÇÃO)
 // =========================================================
-
 window.abrirMapaGlobal = function() {
-    if (typeof L === 'undefined') { 
-        alert("Erro: A biblioteca de mapas (Leaflet) não carregou. Verifique sua conexão ou a pasta js/libs."); 
-        return; 
-    }
+    if (typeof L === 'undefined') { alert("Erro: Leaflet não carregado."); return; }
     window.corrigirIconesLeaflet();
-    document.getElementById('modalMapaGlobal').style.display = 'flex';
     
-    if (window.mapGlobal) window.mapGlobal.remove();
+    document.getElementById('modalMapaGlobal').style.display = 'flex';
+    if (window.mapGlobal) { window.mapGlobal.remove(); }
 
+    // O segredo está no tempo e no invalidateSize
     setTimeout(() => {
+        // Inicializa o mapa
         window.mapGlobal = L.map('mapa-global-container').setView([-15, -50], 4); 
         L.tileLayer(window.TILE_OSM, { maxZoom: 19 }).addTo(window.mapGlobal);
         
@@ -74,26 +70,29 @@ window.abrirMapaGlobal = function() {
             const lat = window.parseCoord(r.lat);
             const lng = window.parseCoord(r.lng);
             if(isNaN(lat) || isNaN(lng)) return;
+
             const marker = L.marker([lat, lng]).addTo(window.mapGlobal);
             marker.bindPopup(`<b>${r.ssid}</b><br>${r.senha}`);
             markers.push([lat, lng]);
         });
 
+        // FORÇA O RECALCULO DE TAMANHO DUAS VEZES (Garante que o modal abriu 100%)
         window.mapGlobal.invalidateSize();
+        
         if (markers.length > 0) {
-            window.mapGlobal.fitBounds(L.latLngBounds(markers), { padding: [50, 50] });
+            const bounds = L.latLngBounds(markers);
+            window.mapGlobal.fitBounds(bounds, { padding: [50, 50] });
         }
-    }, 400);
+
+        // Segundo reforço para telas lentas
+        setTimeout(() => { window.mapGlobal.invalidateSize(); }, 200);
+
+    }, 400); 
 };
 
 window.mostrarMinhaLocalizacaoNoMapa = function() {
     if (typeof window.vibrar === 'function') window.vibrar();
-    if (!window.mapGlobal) {
-        alert("Abra o mapa primeiro!");
-        return;
-    }
-    
-    window.mostrarToast("📍 Buscando sua localização...");
+    if (!window.mapGlobal) return;
     
     navigator.geolocation.getCurrentPosition((pos) => {
         const lat = pos.coords.latitude;
@@ -101,27 +100,19 @@ window.mostrarMinhaLocalizacaoNoMapa = function() {
         window.mapGlobal.setView([lat, lng], 17);
 
         if (window.marcadorUsuarioGlobal) window.mapGlobal.removeLayer(window.marcadorUsuarioGlobal);
-        if (window.circuloUsuarioGlobal) window.mapGlobal.removeLayer(window.circuloUsuarioGlobal);
-
         window.marcadorUsuarioGlobal = L.circleMarker([lat, lng], {
             radius: 8, fillOpacity: 1, color: '#fff', weight: 3, fillColor: '#EF4444'
         }).addTo(window.mapGlobal);
-
-        window.circuloUsuarioGlobal = L.circle([lat, lng], {
-            color: '#EF4444', fillOpacity: 0.1, radius: 150
-        }).addTo(window.mapGlobal);
         
         window.mostrarToast("GPS Encontrado!");
-    }, () => alert("Erro ao acessar GPS. Verifique as permissões do seu navegador."), 
-    { enableHighAccuracy: true });
+    }, null, { enableHighAccuracy: true });
 };
 
 // =========================================================
-// 4. MAPA INDIVIDUAL (EDIÇÃO) E RADAR
+// 4. MAPA DE EDIÇÃO E RADAR
 // =========================================================
-
 window.abrirMapaParaRede = function(id, ssid, lat, lng) {
-    if (typeof L === 'undefined') { alert("Erro: Leaflet não carregado."); return; }
+    if (typeof L === 'undefined') return;
     window.corrigirIconesLeaflet();
     document.getElementById('modalMapa').style.display = 'flex';
     window.redeEditandoMapa = { id };
@@ -144,30 +135,65 @@ window.abrirMapaParaRede = function(id, ssid, lat, lng) {
     }, 400);
 };
 
-window.pararRadar = function() {
-    window.mostrandoApenasProximas = false;
-    if (window.radarWatchId) navigator.geolocation.clearWatch(window.radarWatchId);
-    window.radarWatchId = null;
-    const btn = document.getElementById('btnRadar');
-    if(btn) btn.innerText = "📍 Radar";
-    if (typeof window.renderizarInterface === 'function') window.renderizarInterface(window.redesEmMemoria);
+window.usarMeuGPSNoMapa = function() {
+    navigator.geolocation.getCurrentPosition((pos) => {
+        const { latitude, longitude } = pos.coords;
+        if(window.map) {
+            window.map.setView([latitude, longitude], 18);
+            if(window.mapMarker) window.mapMarker.setLatLng([latitude, longitude]);
+            else window.mapMarker = L.marker([latitude, longitude], { draggable: true }).addTo(window.map);
+        }
+    });
+};
+
+window.aplicarCoordenadasNoMapa = function() {
+    const input = document.getElementById('inputCoordenadasMapa').value.trim();
+    const partes = input.split(',');
+    if (partes.length >= 2) {
+        const lat = window.parseCoord(partes[0]);
+        const lng = window.parseCoord(partes[1]);
+        if (!isNaN(lat) && !isNaN(lng) && window.map) {
+            window.map.setView([lat, lng], 18);
+            if (window.mapMarker) window.mapMarker.setLatLng([lat, lng]);
+            else window.mapMarker = L.marker([lat, lng], { draggable: true }).addTo(window.map);
+        }
+    }
+};
+
+window.salvarLocalizacaoMapa = function() {
+    if(!window.mapMarker) return;
+    const { lat, lng } = window.mapMarker.getLatLng();
+    const latF = parseFloat(lat.toFixed(8));
+    const lngF = parseFloat(lng.toFixed(8));
+    const index = window.redesEmMemoria.findIndex(r => r.id === window.redeEditandoMapa.id);
+    if (index !== -1) { 
+        window.redesEmMemoria[index].lat = latF; 
+        window.redesEmMemoria[index].lng = lngF; 
+    }
+    window.atualizarBackupLocal(window.redesEmMemoria);
+    window.renderizarInterface(window.redesEmMemoria);
+    window.fecharMapa();
+    window.mostrarToast("Salvo!");
 };
 
 window.buscarSenhasPorPerto = function() {
-    if (window.mostrandoApenasProximas) return window.pararRadar();
-    if (typeof window.vibrar === 'function') window.vibrar();
-    const btn = document.getElementById('btnRadar');
-    if(btn) btn.innerText = "❌ Parar";
-    
+    if (window.mostrandoApenasProximas) {
+        window.mostrandoApenasProximas = false;
+        if (window.radarWatchId) navigator.geolocation.clearWatch(window.radarWatchId);
+        document.getElementById('btnRadar').innerText = "📍 Radar";
+        window.renderizarInterface(window.redesEmMemoria);
+        return;
+    }
+    window.vibrar();
+    document.getElementById('btnRadar').innerText = "❌ Parar";
     window.radarWatchId = navigator.geolocation.watchPosition((pos) => {
         const { latitude, longitude } = pos.coords;
         const proximas = window.redesEmMemoria.map(r => ({
             ...r, d: window.calcularDistancia(latitude, longitude, window.parseCoord(r.lat), window.parseCoord(r.lng))
         })).filter(r => r.d <= 150).sort((a,b) => a.d - b.d);
-        
         window.mostrandoApenasProximas = true;
-        if (typeof window.renderizarInterface === 'function') window.renderizarInterface(proximas, true);
-    }, () => window.pararRadar(), {enableHighAccuracy: true});
+        window.renderizarInterface(proximas, true);
+    }, null, {enableHighAccuracy: true});
 };
 
-console.log("✅ Map Engine carregado com sucesso!");
+console.log("✅ Map Engine Finalizado!");
