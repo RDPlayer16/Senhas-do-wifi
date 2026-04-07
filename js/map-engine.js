@@ -1,9 +1,12 @@
-// CORREÇÃO DE ÍCONES OFFLINE
+/**
+ * CORREÇÃO 1: ÍCONES OFFLINE
+ * Garante que o Leaflet encontre as imagens dos pins na sua pasta local /js/libs/images/
+ */
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
-  iconRetinaUrl: './js/libs/images/marker-icon-2x.png',
-  iconUrl: './js/libs/images/marker-icon.png',
-  shadowUrl: './js/libs/images/marker-shadow.png',
+    iconRetinaUrl: './js/libs/images/marker-icon-2x.png',
+    iconUrl: './js/libs/images/marker-icon.png',
+    shadowUrl: './js/libs/images/marker-shadow.png',
 });
 
 window.map = null;
@@ -34,6 +37,9 @@ window.calcularDistancia = function(la1, lo1, la2, lo2) {
     return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 };
 
+/**
+ * CORREÇÃO 2: RENDERIZAÇÃO EM MODAL (Global)
+ */
 window.abrirMapaGlobal = function() {
     if (typeof L === 'undefined') { alert("Conecte-se à internet para carregar o mapa."); return; }
     
@@ -47,6 +53,7 @@ window.abrirMapaGlobal = function() {
         window.circuloUsuarioGlobal = null;
     }
 
+    // Atraso de 400ms para garantir que a animação do modal terminou no WebView
     setTimeout(() => {
         window.mapGlobal = L.map('mapa-global-container').setView([-15, -50], 4); 
         
@@ -59,7 +66,6 @@ window.abrirMapaGlobal = function() {
         const markers = []; 
         
         window.redesEmMemoria.forEach(r => {
-            // Aplica parseCoord para garantir o formato de ponto
             const lat = window.parseCoord(r.lat);
             const lng = window.parseCoord(r.lng);
 
@@ -77,22 +83,23 @@ window.abrirMapaGlobal = function() {
             markers.push([lat, lng]);
         });
 
+        // FORÇA O MAPA A RECALCULAR O TAMANHO (Resolve o bug de marcadores invisíveis)
+        window.mapGlobal.invalidateSize();
+
         if (markers.length > 0) {
             const bounds = L.latLngBounds(markers);
             if (bounds.isValid()) {
-                window.mapGlobal.invalidateSize(true);
-                window.mapGlobal.fitBounds(bounds, { padding: [40, 40], maxZoom: 18 });
-            } else {
-                window.focarLocalizacaoUsuario(window.mapGlobal);
+                window.mapGlobal.fitBounds(bounds, { padding: [50, 50], maxZoom: 18 });
             }
         } else {
             window.focarLocalizacaoUsuario(window.mapGlobal);
         }
-
-        setTimeout(() => { if (window.mapGlobal) window.mapGlobal.invalidateSize(true); }, 150);
-    }, 300);
+    }, 400); 
 };
 
+/**
+ * CORREÇÃO 2.1: RENDERIZAÇÃO EM MODAL (Edição Individual)
+ */
 window.abrirMapaParaRede = function(id, ssid, lat, lng) {
     window.vibrar();
     if (typeof L === 'undefined') { alert("Conecte-se à internet para carregar o mapa."); return; }
@@ -103,10 +110,8 @@ window.abrirMapaParaRede = function(id, ssid, lat, lng) {
     
     if(window.map) { window.map.remove(); document.getElementById('mapa-container').innerHTML = ''; }
     
-    // Converte para ponto antes de usar
     const l = window.parseCoord(lat);
     const g = window.parseCoord(lng);
-    
     const isValidGeo = !isNaN(l) && !isNaN(g);
     const finalLat = isValidGeo ? l : -15;
     const finalLng = isValidGeo ? g : -50;
@@ -115,7 +120,9 @@ window.abrirMapaParaRede = function(id, ssid, lat, lng) {
     setTimeout(() => {
         window.map = L.map('mapa-container', { center: [finalLat, finalLng], zoom: z });
         L.tileLayer(window.TILE_OSM, { maxZoom: 19 }).addTo(window.map);
-        window.map.invalidateSize(true);
+        
+        // Força renderização imediata do container
+        window.map.invalidateSize();
         
         if(isValidGeo) {
             window.mapMarker = L.marker([finalLat, finalLng], { draggable: true }).addTo(window.map);
@@ -125,7 +132,7 @@ window.abrirMapaParaRede = function(id, ssid, lat, lng) {
             if(window.mapMarker) window.mapMarker.setLatLng(e.latlng); 
             else window.mapMarker = L.marker(e.latlng, { draggable: true }).addTo(window.map); 
         });
-    }, 200);
+    }, 400);
 };
 
 window.aplicarCoordenadasNoMapa = function() {
@@ -133,7 +140,6 @@ window.aplicarCoordenadasNoMapa = function() {
     const input = document.getElementById('inputCoordenadasMapa').value.trim();
     if (!input) return;
 
-    // Tenta identificar o separador (vírgula ou ponto e vírgula)
     const partes = input.includes(';') ? input.split(';') : input.split(',');
     
     if (partes.length >= 2) {
@@ -158,7 +164,6 @@ window.salvarLocalizacaoMapa = function() {
     if(!window.mapMarker) { window.mostrarToast("Marque o local no mapa primeiro!"); return; }
     const { lat, lng } = window.mapMarker.getLatLng();
     
-    // Força gravação como float/ponto
     const latFixed = parseFloat(lat.toFixed(8));
     const lngFixed = parseFloat(lng.toFixed(8));
 
