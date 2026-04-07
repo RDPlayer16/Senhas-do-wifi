@@ -50,7 +50,7 @@ window.calcularDistancia = function(la1, lo1, la2, lo2) {
 };
 
 // =========================================================
-// 3. MOTOR DO MAPA GERAL (COM FIX DE RENDERIZAÇÃO)
+// 3. MOTOR DO MAPA GERAL (COM BOTÕES RESTAURADOS)
 // =========================================================
 window.abrirMapaGlobal = function() {
     if (typeof L === 'undefined') { alert("Erro: Leaflet não carregado."); return; }
@@ -59,9 +59,7 @@ window.abrirMapaGlobal = function() {
     document.getElementById('modalMapaGlobal').style.display = 'flex';
     if (window.mapGlobal) { window.mapGlobal.remove(); }
 
-    // O segredo está no tempo e no invalidateSize
     setTimeout(() => {
-        // Inicializa o mapa
         window.mapGlobal = L.map('mapa-global-container').setView([-15, -50], 4); 
         L.tileLayer(window.TILE_OSM, { maxZoom: 19 }).addTo(window.mapGlobal);
         
@@ -72,11 +70,20 @@ window.abrirMapaGlobal = function() {
             if(isNaN(lat) || isNaN(lng)) return;
 
             const marker = L.marker([lat, lng]).addTo(window.mapGlobal);
-            marker.bindPopup(`<b>${r.ssid}</b><br>${r.senha}`);
+            
+            // RESTAURAÇÃO: Seu HTML rico com os botões de ação
+            const popupHTML = `
+                <div style="text-align: center; min-width: 140px; padding: 5px;">
+                    <b style="font-size: 15px; color: var(--primary); display: block; margin-bottom: 5px;">${r.ssid}</b>
+                    <span style="font-size: 13px; color: #555; display: block; margin-bottom: 12px; background: #f0f0f0; padding: 4px; border-radius: 4px;">${r.senha}</span>
+                    <button onclick="window.copy('${r.senha}')" style="background: var(--success); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 8px;">📋 Copiar Senha</button>
+                    <button onclick="window.fecharMapaGlobal(); window.abrirMapaParaRede('${r.id}', '${r.ssid}', '${r.lat}', '${r.lng}')" style="background: var(--geo); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">🗺️ Editar Local</button>
+                </div>`;
+            
+            marker.bindPopup(popupHTML);
             markers.push([lat, lng]);
         });
 
-        // FORÇA O RECALCULO DE TAMANHO DUAS VEZES (Garante que o modal abriu 100%)
         window.mapGlobal.invalidateSize();
         
         if (markers.length > 0) {
@@ -84,7 +91,6 @@ window.abrirMapaGlobal = function() {
             window.mapGlobal.fitBounds(bounds, { padding: [50, 50] });
         }
 
-        // Segundo reforço para telas lentas
         setTimeout(() => { window.mapGlobal.invalidateSize(); }, 200);
 
     }, 400); 
@@ -196,4 +202,4 @@ window.buscarSenhasPorPerto = function() {
     }, null, {enableHighAccuracy: true});
 };
 
-console.log("✅ Map Engine Finalizado!");
+console.log("✅ Map Engine Finalizado com Botões Restaurados!");
