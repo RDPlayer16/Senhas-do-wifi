@@ -1,3 +1,11 @@
+// CORREÇÃO DE ÍCONES OFFLINE
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+  iconRetinaUrl: './js/libs/images/marker-icon-2x.png',
+  iconUrl: './js/libs/images/marker-icon.png',
+  shadowUrl: './js/libs/images/marker-shadow.png',
+});
+
 window.map = null;
 window.mapMarker = null;
 window.redeEditandoMapa = null;
