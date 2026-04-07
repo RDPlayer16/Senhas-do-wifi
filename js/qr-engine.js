@@ -50,7 +50,6 @@ function sharpenCanvas(ctx, w, h, mix) {
     const dstData = ctx.createImageData(w, h);
     const dstBuff = dstData.data;
     const srcBuff = ctx.getImageData(0, 0, w, h).data;
-    const ystep = w * 4;
 
     for (let y = 1; y < h - 1; y++) {
         for (let x = 1; x < w - 1; x++) {
@@ -88,7 +87,6 @@ function processarImagemParaQR(file) {
                 const canvas = document.createElement('canvas');
                 const ctx = canvas.getContext('2d');
                 
-                // Redimensionamento seguro (Não muito pequeno, não muito grande)
                 const MAX_WIDTH = 800;
                 const MAX_HEIGHT = 800;
                 let width = img.width;
@@ -103,16 +101,13 @@ function processarImagemParaQR(file) {
                 canvas.width = Math.floor(width);
                 canvas.height = Math.floor(height);
                 
-                // Fundo branco e desenho normal
                 ctx.fillStyle = "#FFFFFF";
                 ctx.fillRect(0, 0, canvas.width, canvas.height);
                 ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
                 
-                // Aplica a nitidez matemática para consertar o borrado da galeria MIUI
                 sharpenCanvas(ctx, canvas.width, canvas.height, 1.0); 
 
                 try {
-                    // PNG não possui compressão destrutiva, garantindo que a nitidez não será perdida no PWA
                     const dataUrl = canvas.toDataURL('image/png');
                     let arr = dataUrl.split(','), mime = arr[0].match(/:(.*?);/)[1], bstr = atob(arr[1]), n = bstr.length, u8arr = new Uint8Array(n);
                     while(n--) { u8arr[n] = bstr.charCodeAt(n); }
@@ -136,17 +131,18 @@ window.escanearImagemQR = async function(e, target = 'novo') {
     
     if (typeof Html5Qrcode === 'undefined') { alert("Erro: Biblioteca QR não carregada."); return; }
     
+    // Oculta os modais iniciais para focar no processamento
     window.fecharModal(); 
     window.fecharModalEditar();
-    document.getElementById('modalScanner').style.display = 'flex';
-    document.getElementById('reader').innerHTML = '<div style="padding: 30px; text-align: center; color: white;">Extraindo dados nítidos...</div>';
     
-    window.mostrarToast("Restaurando nitidez da imagem...");
+    document.getElementById('modalScanner').style.display = 'flex';
+    document.getElementById('reader').innerHTML = '<div style="padding: 30px; text-align: center; color: white;">Extraindo dados da imagem...</div>';
+    
+    window.mostrarToast("Analisando imagem...");
 
     const html5QrCode = new Html5Qrcode("reader");
 
     try {
-        // Tenta com a imagem afiada e limpa em formato PNG (Para combater o blur do HyperOS)
         const sharpFile = await processarImagemParaQR(originalFile);
         const qrCodeMessage = await html5QrCode.scanFile(sharpFile, true);
         window.processarTextoQR(qrCodeMessage, window.scanTarget);
@@ -154,17 +150,16 @@ window.escanearImagemQR = async function(e, target = 'novo') {
     } catch (err1) {
         console.warn("Falha no arquivo PNG afiado. Tentando bruto.", err1);
         try {
-            // Fallback bruto.
             const msg = await html5QrCode.scanFile(originalFile, true); 
             window.processarTextoQR(msg, window.scanTarget);
         } catch (err2) {
             console.error("Falha total:", err2);
-            window.mostrarToast("QR Code não reconhecido. A compressão da galeria destruiu o código.");
+            window.mostrarToast("QR Code não reconhecido na imagem.");
         }
     } finally {
         html5QrCode.clear();
         window.fecharScanner(true);
-        e.target.value = '';
+        e.target.value = ''; // Reseta o input de arquivo
     }
 };
 
