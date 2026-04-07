@@ -1,13 +1,14 @@
-/**
- * CORREÇÃO 1: ÍCONES OFFLINE
- * Garante que o Leaflet encontre as imagens dos pins na sua pasta local /js/libs/images/
- */
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-    iconRetinaUrl: './js/libs/images/marker-icon-2x.png',
-    iconUrl: './js/libs/images/marker-icon.png',
-    shadowUrl: './js/libs/images/marker-shadow.png',
-});
+// Envolva a correção em uma verificação de segurança
+window.corrigirIconesLeaflet = function() {
+    if (typeof L !== 'undefined' && L.Icon && L.Icon.Default) {
+        delete L.Icon.Default.prototype._getIconUrl;
+        L.Icon.Default.mergeOptions({
+            iconRetinaUrl: './js/libs/images/marker-icon-2x.png',
+            iconUrl: './js/libs/images/marker-icon.png',
+            shadowUrl: './js/libs/images/marker-shadow.png',
+        });
+    }
+};
 
 window.map = null;
 window.mapMarker = null;
