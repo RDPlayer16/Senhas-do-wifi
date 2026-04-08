@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wi-Fi Manager Pro - PWA Resiliente</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#4F46E5">
+
+    <link rel="stylesheet" href="./assets/css/style.css">
+    <link rel="stylesheet" href="./js/libs/leaflet.css">
+</head>
+<body>
+
+    <div class="sticky-header">
+        <div class="container">
+            <div class="header-top">
+                <h1 onclick="window.abrirModalAvancado(); window.vibrar();">📶 Wi-Fi Manager Pro</h1>
+                <div id="statusContador" class="info-status">Carregando...</div>
+            </div>
+            <div style="display: flex; gap: 8px;">
+                <input type="text" id="searchInput" placeholder="🔍 Pesquisar Senhas..." onkeyup="window.filtrar()" style="flex-grow: 1;">
+                <button id="btnViewMode" onclick="window.toggleViewMode()" style="background: var(--card-bg); color: var(--text-main); border: 1px solid var(--border); padding: 0 16px; font-size: 18px;" title="Alternar Visualização">📄</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="content-area"><div id="output"></div></div>
+
+    <div class="watermark">Desenvolvido por Raí Dias</div>
+    
+    <div class="bottom-bar">
+        <div class="bottom-bar-content">
+            <button class="bottom-btn" onclick="window.buscarSenhasPorPerto()" id="btnRadar">📍 Radar</button>
+            <button class="bottom-btn" onclick="window.abrirMapaGlobal(); window.vibrar();">🗺️ Mapa</button>
+            <button class="bottom-btn" onclick="window.abrirModalExportar(); window.vibrar();">📤 Exportar</button>
+            <button class="bottom-btn btn-main" onclick="window.abrirModal(); window.vibrar();">➕ Nova</button>
+        </div>
+    </div>
+    
+    <div id="toast">Aviso!</div>
+    
+    <div id="toast-undo">
+        <span id="toast-undo-text">Rede apagada.</span>
+        <button class="btn-undo" onclick="window.desfazerExclusao()">Desfazer</button>
+    </div>
+
+    <div id="modalExportar" class="modal-overlay">
+        <div class="modal-content" style="max-width: 350px;">
+            <h3 style="margin-bottom: 5px; text-align: center;">📤 Exportar Senhas</h3>
+            <p style="font-size:13px; color:var(--text-muted); text-align: center; margin-bottom: 15px;">Escolha o formato para baixar seu backup:</p>
+            <button onclick="window.exportarTXT(); window.fecharModalExportar();" style="background: var(--primary); margin-bottom: 8px;">💾 Arquivo de Texto (.TXT)</button>
+            <button onclick="window.exportarPDF(); window.fecharModalExportar();" style="background: #E11D48;">📄 Arquivo PDF (.PDF)</button>
+            <div style="display:flex; justify-content: center; margin-top:10px;">
+                <button style="background:var(--text-muted); width: 100%;" onclick="window.fecharModalExportar()">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modalMapa" class="modal-overlay">
+        <div class="modal-content" style="max-width: 500px;">
+            <h3 id="tituloModalMapa" style="margin-bottom: 5px;">📍 Localização da Rede</h3>
+            <button class="btn-geo" id="btnGpsMapa" onclick="window.usarMeuGPSNoMapa()" style="margin-bottom: 8px; width: 100%; background: #0EA5E9;">🎯 Usar meu GPS atual</button>
+            <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                <input type="text" id="inputCoordenadasMapa" placeholder="-23.5505, -46.6333" style="flex-grow: 1; font-size: 13px;">
+                <button class="btn-scan" onclick="window.aplicarCoordenadasNoMapa()" style="padding: 10px; min-width: 45px;">🔍</button>
+            </div>
+            <div id="mapa-container" style="height: 300px; width: 100%; border-radius: 8px; border: 1px solid var(--border);"></div>
+            <div style="display:flex; gap:10px; justify-content: flex-end; margin-top:10px;">
+                <button style="background:var(--text-muted)" onclick="window.fecharMapa()">Cancelar</button>
+                <button class="btn-add" onclick="window.salvarLocalizacaoMapa()">Salvar Coordenada</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modalMapaGlobal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 800px; width: 95%; height: 85vh;">
+            <h3>🗺️ Todas as suas Redes</h3>
+            <p style="font-size:12px; color:var(--text-muted); margin-top:-10px;">Toque no PIN para ver detalhes da rede.</p>
+            <button class="btn-geo" onclick="window.mostrarMinhaLocalizacaoNoMapa()" style="margin-bottom: 10px; width: 100%; background: #EF4444;">📍 Onde estou? (Redes Próximas)</button>
+            <div id="mapa-global-container" style="flex-grow: 1; width: 100%; border-radius: 8px; border: 1px solid var(--border); min-height: 300px;"></div>
+            <div style="display:flex; justify-content: flex-end; margin-top:10px;">
+                <button style="background:var(--text-muted)" onclick="window.fecharMapaGlobal()">Fechar Mapa</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modalAvancado" class="modal-overlay">
+        <div class="modal-content">
+            <h3>⚙️ Modo Desenvolvedor</h3>
+            <textarea id="listaInputOculta" placeholder="* NOME: SENHA"></textarea>
+            <div class="divider">MANUTENÇÃO</div>
+            <button class="btn-reset" onclick="window.hardResetPWA()">🔄 Atualizar PWA (Limpar Tudo)</button>
+            <div style="display:flex; gap:10px; justify-content: flex-end; margin-top: 15px;">
+                <button style="background:var(--text-muted)" onclick="window.fecharModalAvancado()">Fechar</button>
+                <button class="btn-add" onclick="window.importarListaTexto()">📥 Importar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modalNovaRede" class="modal-overlay">
+        <div class="modal-content">
+            <h3>➕ Nova Rede Wi-Fi</h3>
+            <div style="display:flex; gap: 8px; margin-bottom: 5px;">
+                <button class="btn-scan" style="flex: 1; font-size: 13px;" onclick="window.abrirScannerCamera('novo');">📷 Escanear QR</button>
+                <button class="btn-scan" style="flex: 1; font-size: 13px; background: #8B5CF6;" onclick="document.getElementById('qrFileInput').click();">🖼️ Galeria</button>
+            </div>
+            
+            <input type="file" id="qrFileInput" accept="image/png, image/jpeg, image/webp" style="display:none;" onchange="window.escanearImagemQR(event, 'novo')">
+            
+            <div class="divider">OU DIGITE MANUALMENTE</div>
+            <input type="text" id="novoSSID" placeholder="Nome da Rede (SSID)" oninput="window.checarDuplicadoModal()">
+            <input type="text" id="novaSenha" placeholder="Senha" oninput="window.checarDuplicadoModal()">
+            
+            <label style="font-size: 14px; display: flex; align-items: center; gap: 8px; margin-top: 5px;" id="containerCheckLocalizacao">
+                <input type="checkbox" id="checkLocalizacao" checked> Usar GPS (Alta Precisão)
+            </label>
+            
+            <input type="text" id="novaCoordenadaManual" placeholder="Ou cole coordenadas: -23.55, -46.63 (Opcional)" style="margin-top: 2px; font-size: 13px;">
+            
+            <div id="msgDuplicadoModal" class="aviso-duplicado"></div>
+            <button id="btnAdicionarGeo" class="btn-geo" style="display:none;" onclick="window.atualizarGeoRedeExistente();">📍 Adicionar GPS Agora</button>
+            <div style="display:flex; gap:10px; justify-content: flex-end; margin-top:10px;">
+                <button style="background:var(--text-muted)" onclick="window.fecharModal()">Cancelar</button>
+                <button id="btnSalvarModal" class="btn-add" onclick="window.salvarRedeLocal()">Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modalEditarRede" class="modal-overlay">
+        <div class="modal-content">
+            <h3>✏️ Editar Rede</h3>
+            
+            <div style="display:flex; gap: 8px; margin-bottom: 10px;">
+                <button class="btn-scan" style="flex: 1; font-size: 13px;" onclick="window.abrirScannerCamera('editar');">📷 Escanear QR</button>
+                <button class="btn-scan" style="flex: 1; font-size: 13px; background: #8B5CF6;" onclick="document.getElementById('editQrFileInput').click();">🖼️ Galeria</button>
+            </div>
+            <input type="file" id="editQrFileInput" accept="image/png, image/jpeg, image/webp" style="display:none;" onchange="window.escanearImagemQR(event, 'editar')">
+
+            <input type="text" id="editSSID" placeholder="Nome da Rede (SSID)">
+            <input type="text" id="editSenha" placeholder="Nova Senha">
+            <div style="display:flex; justify-content: space-between; margin-top:15px; gap: 10px;">
+                <button class="btn-delete" style="border: 1px solid var(--danger); background: transparent; color: var(--danger);" onclick="window.excluirPeloModalEditar()">🗑️ Apagar</button>
+                <div style="display:flex; gap:10px;">
+                    <button style="background:var(--text-muted)" onclick="window.fecharModalEditar()">Cancelar</button>
+                    <button class="btn-add" onclick="window.salvarEdicaoRede()">Salvar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="modalScanner" class="modal-overlay">
+        <div class="modal-content">
+            <div id="reader"></div>
+            <button style="background:var(--danger); margin-top:10px;" onclick="window.fecharScanner(true);">Voltar</button>
+        </div>
+    </div>
+
+    <!-- Scripts das Bibliotecas Locais (Para funcionamento Offline) -->
+    <script src="./js/libs/leaflet.js"></script>
+    <script src="./js/libs/html5-qrcode.min.js"></script>
+    <script src="./js/libs/qrcode.min.js"></script>
+    <script src="./js/libs/jspdf.umd.min.js"></script>
+
+    <!-- Motores do Aplicativo -->
+    <script src="./js/map-engine.js"></script>
+    <script src="./js/qr-engine.js"></script>
+    <script src="./js/core.js"></script>
+
+    <!-- Sincronização Firebase (Ignorado em modo offline) -->
+    <script type="module" src="./js/firebase-sync.js"></script>
+
+    <script>
+      // Registro do Service Worker para suporte Offline PWA
+      if ('serviceWorker' in navigator) { 
+          window.addEventListener('load', () => {
+              navigator.serviceWorker.register('./sw.js', { scope: './' }).then(reg => {
+                  console.log("✅ PWA Protegido: Offline Ready");
+              }).catch(err => {
+                  console.error("❌ Erro ao registrar Service Worker:", err);
+              });
+          });
+      }
+    </script>
+</body>
+</html>
