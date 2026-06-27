@@ -33,6 +33,72 @@ window.criarMetadadosCadastroRede = function(timestamp = Date.now()) {
     };
 };
 
+window.normalizarRedeTexto = function(value) {
+    return String(value || '').trim().toLowerCase();
+};
+
+window.deduplicarListaRedes = function(lista) {
+    const resultado = [];
+    const vistosPorId = new Map();
+
+    (Array.isArray(lista) ? lista : []).forEach((rede) => {
+        if (!rede) return;
+        const id = String(rede.id || '').trim();
+        if (id) {
+            if (vistosPorId.has(id)) {
+                const existente = vistosPorId.get(id);
+                Object.assign(existente, {
+                    ...rede,
+                    lat: rede.lat ?? existente.lat ?? null,
+                    lng: rede.lng ?? existente.lng ?? null,
+                    bssid: rede.bssid || existente.bssid || null,
+                    createdAt: Number(rede.createdAt || existente.createdAt) || existente.createdAt || rede.createdAt
+                });
+                return;
+            }
+            vistosPorId.set(id, rede);
+        }
+        resultado.push(rede);
+    });
+
+    return resultado;
+};
+
+window.deduplicarRedesMemoria = function() {
+    const antes = window.redesEmMemoria || [];
+    const depois = window.deduplicarListaRedes(antes);
+    if (depois.length !== antes.length) {
+        const removidas = antes.length - depois.length;
+        window.redesEmMemoria = depois;
+        window.atualizarBackupLocal(window.redesEmMemoria);
+        if (typeof window.registrarLogEvento === 'function') {
+            window.registrarLogEvento('duplicata_removida', `${removidas} duplicata(s) removida(s) do banco local`, {
+                removidas
+            });
+        }
+    }
+    return window.redesEmMemoria;
+};
+
+window.encontrarRedeMesmoCadastro = function(ssid, senha, bssid = null) {
+    const ssidNovo = window.normalizarRedeTexto(ssid);
+    const senhaNova = String(senha || '');
+    const bssidNovo = typeof window.normalizarWifiBssid === 'function'
+        ? window.normalizarWifiBssid(bssid)
+        : window.normalizarRedeTexto(bssid);
+
+    return (window.redesEmMemoria || []).find((rede) => {
+        if (window.normalizarRedeTexto(rede.ssid) !== ssidNovo) return false;
+        if (String(rede.senha || '') !== senhaNova) return false;
+        const bssidExistente = typeof window.normalizarWifiBssid === 'function'
+            ? window.normalizarWifiBssid(rede.bssid)
+            : window.normalizarRedeTexto(rede.bssid);
+        if (bssidNovo && bssidExistente && bssidNovo !== bssidExistente) return false;
+        if (bssidNovo && !bssidExistente) return false;
+        return true;
+    });
+};
+
 window.obterLogEventos = function() {
     try {
         const log = JSON.parse(localStorage.getItem(window.APP_LOG_KEY) || '[]');
@@ -61,6 +127,19 @@ window.registrarLogEvento = function(tipo, mensagem, dados = {}) {
     window.salvarLogEventos(log);
     window.renderizarLogDesenvolvedor();
     return evento;
+};
+
+window.registrarOperacaoBanco = function(tipo, mensagem, rede = {}, dados = {}) {
+    if (typeof window.registrarLogEvento !== 'function') return null;
+    const payload = {
+        redeId: rede?.id || dados.redeId || null,
+        ssid: rede?.ssid || dados.ssid || null,
+        bssid: rede?.bssid || dados.bssid || null,
+        local: !!String(rede?.id || dados.redeId || '').startsWith('local_'),
+        online: navigator.onLine,
+        ...dados
+    };
+    return window.registrarLogEvento(tipo, mensagem, payload);
 };
 
 window.getRedeLogTimestamp = function(rede) {
@@ -104,6 +183,46 @@ window.limparLogDesenvolvedor = function() {
     localStorage.removeItem(window.APP_LOG_KEY);
     window.renderizarLogDesenvolvedor();
     window.mostrarToast('Log limpo.');
+};
+
+window.mostrarSobreApp = function() {
+    window.mostrarToast('Wi-Fi Manager Pro\nDesenvolvido por Raí Dias');
+};
+
+window.abrirModalGerenciarRoteador = function() {
+    if (typeof window.fecharMenuLateral === 'function') window.fecharMenuLateral();
+    const modal = document.getElementById('modalGerenciarRoteadorPwa');
+    if (modal) modal.style.display = 'flex';
+};
+
+window.fecharModalGerenciarRoteador = function() {
+    const modal = document.getElementById('modalGerenciarRoteadorPwa');
+    if (modal) modal.style.display = 'none';
+};
+
+window.abrirEnderecoRoteador = function(ipOuUrl) {
+    const entrada = String(ipOuUrl || '').trim();
+    if (!entrada) {
+        window.mostrarToast('Digite o IP do roteador.');
+        return;
+    }
+
+    const valor = entrada.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+    const ipv4 = valor.match(/^(\d{1,3}\.){3}\d{1,3}(:\d+)?$/);
+    if (!ipv4) {
+        window.mostrarToast('IP invalido. Exemplo: 192.168.1.1');
+        return;
+    }
+
+    const octetos = valor.split(':')[0].split('.').map(Number);
+    if (octetos.some(num => Number.isNaN(num) || num < 0 || num > 255)) {
+        window.mostrarToast('IP invalido. Cada bloco precisa estar entre 0 e 255.');
+        return;
+    }
+
+    const url = `http://${valor}`;
+    window.open(url, '_blank', 'noopener,noreferrer');
+    window.fecharModalGerenciarRoteador();
 };
 
 window.vibrar = function() {
@@ -335,7 +454,10 @@ window.atualizarDashboardLayout = function() {
             if (labelEl) labelEl.textContent = 'Resumo PWA';
             ssidEl.textContent = `${redes.length} redes salvas`;
             metaEl.textContent = 'Use o Radar por GPS ou cadastre uma nova rede manualmente.';
-            if (routerBtn) routerBtn.disabled = true;
+            if (routerBtn) {
+                routerBtn.disabled = false;
+                routerBtn.onclick = () => window.abrirModalGerenciarRoteador();
+            }
             if (saveBtn) saveBtn.disabled = true;
         } else if (current && current.connected && current.ssid) {
             if (labelEl) labelEl.textContent = 'Rede Atual';
@@ -849,6 +971,13 @@ window.renderizarInterface = function(lista, radar = false) {
 window.renderizarInterface = function(lista, radar = false) {
     const out = document.getElementById('output');
     if (!out) return;
+    if (!radar && Array.isArray(lista) && typeof window.deduplicarListaRedes === 'function') {
+        const listaDeduplicada = window.deduplicarListaRedes(lista);
+        if (listaDeduplicada.length !== lista.length || lista === window.redesEmMemoria) {
+            window.redesEmMemoria = listaDeduplicada;
+            lista = window.redesEmMemoria;
+        }
+    }
     window.atualizarDashboardLayout();
     window.renderizarBuscaInicio();
     document.querySelectorAll('.filter-tab').forEach(btn => {
@@ -1001,6 +1130,7 @@ window.salvarEdicaoRede = async function() {
 
     const id = window.redeEditandoAtual.id;
     const index = window.redesEmMemoria.findIndex(r => r.id === id);
+    const redeAntes = index !== -1 ? { ...window.redesEmMemoria[index] } : { ...window.redeEditandoAtual };
     
     if(index !== -1) {
         window.redesEmMemoria[index].ssid = s;
@@ -1017,6 +1147,16 @@ window.salvarEdicaoRede = async function() {
 
     window.redesEmMemoria.sort((a, b) => a.ssid.localeCompare(b.ssid));
     window.atualizarBackupLocal(window.redesEmMemoria);
+    window.registrarOperacaoBanco('rede_editada', `Rede editada: ${redeAntes.ssid || s}`, {
+        ...redeAntes,
+        id,
+        ssid: s,
+        senha: p
+    }, {
+        ssidAnterior: redeAntes.ssid || null,
+        ssidNovo: s,
+        senhaAlterada: String(redeAntes.senha || '') !== p
+    });
     if (!window.mostrandoApenasProximas) window.renderizarInterface(window.redesEmMemoria);
     window.atualizarContador(navigator.onLine ? 'sincronizando' : 'offline');
     window.fecharModalEditar();
@@ -1039,6 +1179,7 @@ window.iniciarExclusao = function(id, ssid) {
     window.redePendenteExclusao = rede;
     window.redesEmMemoria = window.redesEmMemoria.filter(r => r.id !== id);
     window.atualizarBackupLocal(window.redesEmMemoria);
+    window.registrarOperacaoBanco('rede_exclusao_solicitada', `Exclusao solicitada: ${rede.ssid}`, rede);
     window.renderizarInterface(window.redesEmMemoria);
     window.atualizarContador(navigator.onLine ? 'sincronizando' : 'offline');
 
@@ -1055,6 +1196,7 @@ window.desfazerExclusao = function() {
     window.redesEmMemoria.push(window.redePendenteExclusao);
     window.redesEmMemoria.sort((a, b) => a.ssid.localeCompare(b.ssid));
     window.atualizarBackupLocal(window.redesEmMemoria);
+    window.registrarOperacaoBanco('rede_exclusao_desfeita', `Exclusao desfeita: ${window.redePendenteExclusao.ssid}`, window.redePendenteExclusao);
     window.renderizarInterface(window.redesEmMemoria);
     window.atualizarContador(navigator.onLine ? 'sincronizando' : 'offline');
     window.redePendenteExclusao = null;
@@ -1065,6 +1207,7 @@ window.desfazerExclusao = function() {
 window.confirmarExclusaoDefinitiva = function() {
     if (!window.redePendenteExclusao) return;
     const id = window.redePendenteExclusao.id;
+    const redeExcluida = { ...window.redePendenteExclusao };
     if (navigator.onLine && typeof window.firebaseExcluir === 'function' && !id.toString().startsWith('local_')) {
         window.firebaseExcluir(id);
     } else if (!id.toString().startsWith('local_')) {
@@ -1072,6 +1215,7 @@ window.confirmarExclusaoDefinitiva = function() {
         if(!filaExclusao.includes(id)) filaExclusao.push(id);
         localStorage.setItem('wifi_pro_deletes_v1', JSON.stringify(filaExclusao));
     }
+    window.registrarOperacaoBanco('rede_excluida', `Rede excluida: ${redeExcluida.ssid}`, redeExcluida);
     window.redePendenteExclusao = null;
     const tUndo = document.getElementById('toast-undo');
     if(tUndo) tUndo.className = '';
@@ -1125,6 +1269,7 @@ window.atualizarGeoRedeExistente = async function() {
 
     const id = window.redeDuplicadaAtual.id;
     const index = window.redesEmMemoria.findIndex(r => r.id === id);
+    const redeAtualizada = index !== -1 ? window.redesEmMemoria[index] : window.redeDuplicadaAtual;
     if (index !== -1) {
         window.redesEmMemoria[index].lat = lat;
         window.redesEmMemoria[index].lng = lng;
@@ -1142,6 +1287,15 @@ window.atualizarGeoRedeExistente = async function() {
     }
 
     await window.atualizarBackupLocal(window.redesEmMemoria);
+    window.registrarOperacaoBanco('localizacao_atualizada', `Localizacao atualizada: ${redeAtualizada.ssid}`, {
+        ...redeAtualizada,
+        lat,
+        lng
+    }, {
+        lat,
+        lng,
+        origem: coordManual ? 'manual' : (usarGeo ? 'gps' : 'sem_localizacao')
+    });
     window.renderizarInterface(window.redesEmMemoria);
     window.fecharModal();
     btnGeo.innerText = "📍 Adicionar GPS Agora"; 
@@ -1225,6 +1379,27 @@ window.salvarRedeLocal = async function() {
     const contextoWifiCadastro = window.novaRedeWifiSugerida ? { ...window.novaRedeWifiSugerida } : null;
     const conectarAposCadastro = !!window.novaRedeConectarAposCadastro;
 
+    if (btnSalvar?.dataset.saving === 'true') return;
+    if (btnSalvar) {
+        btnSalvar.dataset.saving = 'true';
+        btnSalvar.disabled = true;
+        btnSalvar.innerText = "Salvando...";
+    }
+
+    window.deduplicarRedesMemoria();
+    const redeJaExistente = window.encontrarRedeMesmoCadastro(s, p, bssid || null);
+    if (redeJaExistente) {
+        window.renderizarInterface(window.redesEmMemoria);
+        window.fecharModal();
+        if (btnSalvar) {
+            btnSalvar.innerText = "Salvar";
+            btnSalvar.disabled = false;
+            delete btnSalvar.dataset.saving;
+        }
+        window.mostrarToast("Esta rede ja estava salva.");
+        return;
+    }
+
     const metaCriacao = window.criarMetadadosCadastroRede();
     let novoId = 'local_' + metaCriacao.createdAt; 
     if (navigator.onLine && typeof window.firebasePush === 'function') {
@@ -1242,6 +1417,7 @@ window.salvarRedeLocal = async function() {
         createdAt: metaCriacao.createdAt,
         timestamp: metaCriacao.createdAt
     });
+    window.deduplicarRedesMemoria();
     window.redesEmMemoria.sort((a, b) => a.ssid.localeCompare(b.ssid));
     await window.atualizarBackupLocal(window.redesEmMemoria);
     window.renderizarInterface(window.redesEmMemoria);
@@ -1251,6 +1427,7 @@ window.salvarRedeLocal = async function() {
     window.fecharModal(); 
     btnSalvar.innerText = "Salvar"; 
     btnSalvar.disabled = false;
+    delete btnSalvar.dataset.saving;
     const conectando = await window.tentarConectarRedeRecemCadastrada(novaRede, contextoWifiCadastro, conectarAposCadastro);
     if (conectando) return;
     

@@ -399,6 +399,7 @@ window.salvarLocalizacaoMapa = function() {
     const lngF = parseFloat(lng.toFixed(8));
     const id = window.redeEditandoMapa.id;
     const index = window.redesEmMemoria.findIndex(r => r.id === id);
+    const redeAtualizada = index !== -1 ? window.redesEmMemoria[index] : window.redeEditandoMapa;
     if (index !== -1) { 
         window.redesEmMemoria[index].lat = latF; 
         window.redesEmMemoria[index].lng = lngF; 
@@ -415,6 +416,17 @@ window.salvarLocalizacaoMapa = function() {
     }
 
     window.atualizarBackupLocal(window.redesEmMemoria);
+    if (typeof window.registrarOperacaoBanco === 'function') {
+        window.registrarOperacaoBanco('localizacao_atualizada', `Localizacao atualizada pelo mapa: ${redeAtualizada.ssid}`, {
+            ...redeAtualizada,
+            lat: latF,
+            lng: lngF
+        }, {
+            lat: latF,
+            lng: lngF,
+            origem: 'mapa'
+        });
+    }
     window.renderizarInterface(window.redesEmMemoria);
     window.fecharMapa();
     window.mostrarToast("Salvo!");
@@ -432,6 +444,10 @@ window.atualizarBotoesRadar = function(ativo) {
         } else {
             button.innerHTML = `${icon} ${label}`;
         }
+    });
+    document.querySelectorAll('[data-radar-stop-button]').forEach((button) => {
+        button.classList.toggle('show', !!ativo);
+        button.textContent = ativo ? 'Parar Radar' : 'Radar parado';
     });
 };
 

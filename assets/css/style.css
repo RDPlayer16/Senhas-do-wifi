@@ -501,10 +501,29 @@ html[data-theme="light"] .list-shell {
     color: var(--text-muted);
 }
 
+.list-toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .small-add {
     width: auto;
     padding: 10px 12px;
     white-space: nowrap;
+}
+
+.radar-stop-inline {
+    display: none;
+    width: auto;
+    padding: 10px 12px;
+    white-space: nowrap;
+    background: var(--danger);
+    color: #fff;
+}
+
+.radar-stop-inline.show {
+    display: inline-flex;
 }
 
 .search-row {
@@ -836,6 +855,52 @@ html[data-theme="light"] .bottom-bar {
     height: 22px;
 }
 
+.router-modal {
+    max-width: 460px;
+}
+
+.router-helper {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+.router-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.router-grid button {
+    min-height: 72px;
+    display: grid;
+    align-content: center;
+    gap: 5px;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface-2);
+    color: var(--text-main);
+    text-align: left;
+}
+
+.router-grid button strong,
+.router-grid button span {
+    display: block;
+}
+
+.router-grid button span {
+    color: var(--accent);
+    font-size: 13px;
+}
+
+.router-custom {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 96px;
+    gap: 8px;
+}
+
 .developer-log {
     display: grid;
     gap: 8px;
@@ -940,8 +1005,23 @@ body:not(.developer-mode) .developer-entry {
         flex-direction: column;
     }
 
+    .list-toolbar-actions {
+        width: 100%;
+        display: grid;
+        grid-template-columns: 1fr;
+    }
+
     .small-add {
         width: 100%;
+    }
+
+    .radar-stop-inline.show {
+        width: 100%;
+    }
+
+    .router-grid,
+    .router-custom {
+        grid-template-columns: 1fr;
     }
 
     .segmented-control {
