@@ -422,7 +422,16 @@ window.salvarLocalizacaoMapa = function() {
 
 window.atualizarBotoesRadar = function(ativo) {
     document.querySelectorAll('[data-radar-button]').forEach((button) => {
-        button.textContent = ativo ? '× Parar' : '⌖ Radar';
+        const icon = ativo ? '&times;' : '&#8982;';
+        const label = ativo ? 'Parar' : 'Radar';
+        button.classList.toggle('radar-active', !!ativo);
+        if (button.classList.contains('bottom-btn')) {
+            button.innerHTML = `<span class="nav-icon">${icon}</span><span class="nav-label">${label}</span><small>${ativo ? 'GPS ativo' : 'GPS'}</small>`;
+        } else if (button.id === 'drawerWifiAction') {
+            button.innerHTML = `<span class="drawer-icon">${icon}</span><span>${label}</span>`;
+        } else {
+            button.innerHTML = `${icon} ${label}`;
+        }
     });
 };
 

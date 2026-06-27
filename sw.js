@@ -1,4 +1,4 @@
-const CACHE_NAME = 'wifi-manager-v35'; // Atualizado para forçar o navegador a instalar a nova versão
+const CACHE_NAME = 'wifi-manager-v36'; // Atualizado para forçar o navegador a instalar a nova versão
 const ASSETS = [
   './',
   './index.html',

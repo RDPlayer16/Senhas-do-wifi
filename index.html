@@ -199,6 +199,10 @@
             <button class="btn-scan" onclick="window.vibrar(); document.getElementById('backupImportInput').click();">Selecionar TXT/PDF</button>
             <div class="divider">MANUTENCAO</div>
             <button class="btn-reset" onclick="window.vibrar(); window.hardResetPWA()">Atualizar PWA (Limpar Tudo)</button>
+            <div class="divider">LOG</div>
+            <div id="appLogOutput" class="developer-log">Sem eventos registrados.</div>
+            <button class="btn-scan" onclick="window.vibrar(); window.renderizarLogDesenvolvedor()">Atualizar Log</button>
+            <button class="btn-delete" onclick="window.vibrar(); window.limparLogDesenvolvedor()">Limpar Log</button>
             <div style="display:flex; gap:10px; justify-content: flex-end; margin-top: 15px;">
                 <button style="background:var(--text-muted)" onclick="window.vibrar(); window.fecharModalAvancado()">Fechar</button>
                 <button class="btn-add" onclick="window.vibrar(); window.importarListaTexto()">Importar</button>

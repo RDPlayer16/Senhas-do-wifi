@@ -1,6 +1,7 @@
 // VARIÁVEIS GLOBAIS DE ESTADO
 window.DB_KEY = 'wifi_pro_db_v9';
 window.DB_GEO_KEY = 'wifi_pro_db_geo_v1';
+window.APP_LOG_KEY = 'wifi_pro_event_log_v1';
 window.redesEmMemoria = [];
 window.mostrandoApenasProximas = false;
 window.radarWatchId = null;
@@ -30,6 +31,79 @@ window.criarMetadadosCadastroRede = function(timestamp = Date.now()) {
         createdAtIso: date.toISOString(),
         createdAtLocal: date.toLocaleString('pt-BR')
     };
+};
+
+window.obterLogEventos = function() {
+    try {
+        const log = JSON.parse(localStorage.getItem(window.APP_LOG_KEY) || '[]');
+        return Array.isArray(log) ? log : [];
+    } catch (error) {
+        return [];
+    }
+};
+
+window.salvarLogEventos = function(log) {
+    localStorage.setItem(window.APP_LOG_KEY, JSON.stringify((Array.isArray(log) ? log : []).slice(0, 300)));
+};
+
+window.registrarLogEvento = function(tipo, mensagem, dados = {}) {
+    const timestamp = Number(dados.timestamp || dados.createdAt) || Date.now();
+    const evento = {
+        id: 'log_' + timestamp + '_' + Math.random().toString(36).slice(2, 8),
+        tipo,
+        mensagem,
+        timestamp,
+        dataIso: new Date(timestamp).toISOString(),
+        dataLocal: new Date(timestamp).toLocaleString('pt-BR'),
+        dados
+    };
+    const log = [evento, ...window.obterLogEventos()].slice(0, 300);
+    window.salvarLogEventos(log);
+    window.renderizarLogDesenvolvedor();
+    return evento;
+};
+
+window.getRedeLogTimestamp = function(rede) {
+    if (!rede) return 0;
+    const id = String(rede.id || '');
+    const ssid = String(rede.ssid || '');
+    const senha = String(rede.senha || '');
+    const eventos = window.obterLogEventos();
+    const evento = eventos.find(item => {
+        if (item.tipo !== 'rede_adicionada') return false;
+        const dados = item.dados || {};
+        if (id && String(dados.redeId || '') === id) return true;
+        return String(dados.ssid || '') === ssid && String(dados.senha || '') === senha;
+    });
+    return evento ? Number(evento.timestamp) || 0 : 0;
+};
+
+window.renderizarLogDesenvolvedor = function() {
+    const out = document.getElementById('appLogOutput');
+    if (!out) return;
+    const log = window.obterLogEventos();
+    if (!log.length) {
+        out.textContent = 'Sem eventos registrados.';
+        return;
+    }
+    out.innerHTML = '';
+    log.slice(0, 80).forEach(evento => {
+        const item = document.createElement('div');
+        item.className = 'developer-log-item';
+        const title = document.createElement('strong');
+        title.textContent = evento.mensagem || evento.tipo || 'Evento';
+        const meta = document.createElement('span');
+        meta.textContent = evento.dataLocal || new Date(evento.timestamp || Date.now()).toLocaleString('pt-BR');
+        item.appendChild(title);
+        item.appendChild(meta);
+        out.appendChild(item);
+    });
+};
+
+window.limparLogDesenvolvedor = function() {
+    localStorage.removeItem(window.APP_LOG_KEY);
+    window.renderizarLogDesenvolvedor();
+    window.mostrarToast('Log limpo.');
 };
 
 window.vibrar = function() {
@@ -112,15 +186,16 @@ window.aplicarRuntimeLayout = function() {
     const drawerWifi = document.getElementById('drawerWifiAction');
     const bottomWifi = document.getElementById('bottomWifiAction');
 
-    if (!native) {
-        if (drawerWifi) {
-            drawerWifi.innerHTML = '<span class="drawer-icon">⌖</span><span>Radar</span>';
-            drawerWifi.onclick = abrirRadar;
-        }
-        if (bottomWifi) {
-            bottomWifi.innerHTML = '<span class="nav-icon">⌖</span><span class="nav-label">Radar</span><small>GPS</small>';
-            bottomWifi.onclick = abrirRadar;
-        }
+    if (bottomWifi) {
+        bottomWifi.innerHTML = '<span class="nav-icon">⌖</span><span class="nav-label">Radar</span><small>GPS</small>';
+        bottomWifi.onclick = abrirRadar;
+        bottomWifi.setAttribute('data-radar-button', 'true');
+    }
+
+    if (!native && drawerWifi) {
+        drawerWifi.innerHTML = '<span class="drawer-icon">⌖</span><span>Radar</span>';
+        drawerWifi.onclick = abrirRadar;
+        drawerWifi.setAttribute('data-radar-button', 'true');
     }
 };
 
@@ -183,15 +258,25 @@ window.filtrarListaPainel = function(lista, radar = false) {
     const base = Array.isArray(lista) ? [...lista] : [];
     if (radar) return base;
     if (window.appCurrentFilter === 'recent') {
-        return base
-            .sort((a, b) => window.getRedeRecentTimestamp(b) - window.getRedeRecentTimestamp(a))
-            .slice(0, 10);
+        return window.obterRedesRecentes(base);
     }
     return base;
 };
 
+window.obterRedesRecentes = function(lista, limite = 10) {
+    return (Array.isArray(lista) ? lista : [])
+        .map(rede => ({ rede, timestamp: window.getRedeRecentTimestamp(rede) }))
+        .filter(item => item.timestamp > 0)
+        .sort((a, b) => b.timestamp - a.timestamp)
+        .slice(0, limite)
+        .map(item => item.rede);
+};
+
 window.getRedeRecentTimestamp = function(rede) {
     if (!rede) return 0;
+    const logTimestamp = window.getRedeLogTimestamp(rede);
+    if (logTimestamp > 0) return logTimestamp;
+
     const direct = Number(rede.createdAt || rede.criadoEm || rede.updatedAt || rede.timestamp);
     if (!Number.isNaN(direct) && direct > 0) return direct;
 
@@ -219,7 +304,7 @@ window.atualizarDashboardLayout = function() {
     const redes = window.redesEmMemoria || [];
     const mapped = redes.filter(rede => rede.lat && rede.lng).length;
     const found = Array.isArray(window.nativeWifiUltimoScan) ? window.nativeWifiUltimoScan.length : 0;
-    const recent = Math.min(redes.length, 10);
+    const recent = window.obterRedesRecentes(redes).length;
 
     const setText = (id, value) => {
         const el = document.getElementById(id);
@@ -398,6 +483,7 @@ window.abrirModalAvancado = function() {
     document.getElementById('modalAvancado').style.display = 'flex'; 
     const inputOculta = document.getElementById('listaInputOculta');
     inputOculta.value = window.redesEmMemoria.map(r => `* ${r.ssid}: ${r.senha}`).join('\n\n');
+    window.renderizarLogDesenvolvedor();
 };
 
 window.fecharModalAvancado = function() { document.getElementById('modalAvancado').style.display = 'none'; };
@@ -1148,6 +1234,14 @@ window.salvarRedeLocal = async function() {
 
     const novaRede = { id: novoId, ssid: s, senha: p, lat, lng, bssid: bssid || null, ...metaCriacao };
     window.redesEmMemoria.push(novaRede);
+    window.registrarLogEvento('rede_adicionada', `Rede adicionada: ${s}`, {
+        redeId: novoId,
+        ssid: s,
+        senha: p,
+        bssid: bssid || null,
+        createdAt: metaCriacao.createdAt,
+        timestamp: metaCriacao.createdAt
+    });
     window.redesEmMemoria.sort((a, b) => a.ssid.localeCompare(b.ssid));
     await window.atualizarBackupLocal(window.redesEmMemoria);
     window.renderizarInterface(window.redesEmMemoria);
@@ -1180,6 +1274,13 @@ window.importarListaTexto = async function() {
                 if (p.length >= 8 && !window.redesEmMemoria.find(r => r.ssid === s)) {
                     const metaImportacao = window.criarMetadadosCadastroRede(Date.now() + adicionados);
                     window.redesEmMemoria.push({ id: 'local_' + metaImportacao.createdAt, ssid: s, senha: p, lat: null, lng: null, ...metaImportacao });
+                    window.registrarLogEvento('rede_adicionada', `Rede adicionada por importacao: ${s}`, {
+                        redeId: 'local_' + metaImportacao.createdAt,
+                        ssid: s,
+                        senha: p,
+                        createdAt: metaImportacao.createdAt,
+                        timestamp: metaImportacao.createdAt
+                    });
                     adicionados++;
                 }
             }
@@ -1325,14 +1426,23 @@ window.aplicarRedesImportadas = async function(redes) {
         }
 
         const metaImportacao = window.criarMetadadosCadastroRede(Date.now() + adicionados);
+        const redeIdImportada = 'local_' + metaImportacao.createdAt + '_' + adicionados;
         window.redesEmMemoria.push({
-            id: 'local_' + metaImportacao.createdAt + '_' + adicionados,
+            id: redeIdImportada,
             ssid: rede.ssid,
             senha: rede.senha,
             bssid: bssid || null,
             lat: rede.lat ?? null,
             lng: rede.lng ?? null,
             ...metaImportacao
+        });
+        window.registrarLogEvento('rede_adicionada', `Rede adicionada por importacao: ${rede.ssid}`, {
+            redeId: redeIdImportada,
+            ssid: rede.ssid,
+            senha: rede.senha,
+            bssid: bssid || null,
+            createdAt: metaImportacao.createdAt,
+            timestamp: metaImportacao.createdAt
         });
         adicionados++;
     });
