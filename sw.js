@@ -1,10 +1,11 @@
-const CACHE_NAME = 'wifi-manager-v15'; // Atualizado para forçar o navegador a instalar a nova versão
+const CACHE_NAME = 'wifi-manager-v35'; // Atualizado para forçar o navegador a instalar a nova versão
 const ASSETS = [
   './',
   './index.html',
   './manifest.json',
   './assets/css/style.css',
   './js/core.js',
+  './js/native-wifi.js',
   './js/map-engine.js',
   './js/qr-engine.js',
   './js/firebase-sync.js',
@@ -12,6 +13,7 @@ const ASSETS = [
   './js/libs/jspdf.umd.min.js',
   './js/libs/leaflet.css',
   './js/libs/leaflet.js',
+  './js/libs/qrcode-modern.js',
   './js/libs/qrcode.min.js',
   './js/libs/images/marker-icon.png',
   './js/libs/images/marker-icon-2x.png',

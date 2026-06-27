@@ -1,23 +1,17 @@
 // =========================================================
-// 1. FUNÇÕES DE INTERFACE
+// 1. FUNÇÕES DE INTERFACE (DEFINIDAS PRIMEIRO)
 // =========================================================
-window.fecharMapa = function() {
+window.fecharMapa = function() { 
     const m = document.getElementById('modalMapa');
-    if (m) m.style.display = 'none';
+    if(m) m.style.display = 'none'; 
 };
 
-window.fecharMapaGlobal = function() {
+window.fecharMapaGlobal = function() { 
     const m = document.getElementById('modalMapaGlobal');
-    if (m) m.style.display = 'none';
-
+    if(m) m.style.display = 'none'; 
     if (window.marcadorUsuarioGlobal && window.mapGlobal) {
         window.mapGlobal.removeLayer(window.marcadorUsuarioGlobal);
         window.marcadorUsuarioGlobal = null;
-    }
-
-    if (window.circuloUsuarioGlobal && window.mapGlobal) {
-        window.mapGlobal.removeLayer(window.circuloUsuarioGlobal);
-        window.circuloUsuarioGlobal = null;
     }
 };
 
@@ -26,23 +20,19 @@ window.fecharMapaGlobal = function() {
 // =========================================================
 window.map = null;
 window.mapMarker = null;
-window.mapGlobal = null;
+window.mapGlobal = null; 
+window.mapGlobalMarkersLayer = null;
+window.mapGlobalBoundsAplicado = false;
 window.marcadorUsuarioGlobal = null;
 window.circuloUsuarioGlobal = null;
 window.TILE_OSM = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+window.TILE_SATELLITE = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}';
+window.ATTR_OSM = '&copy; OpenStreetMap contributors';
+window.ATTR_SATELLITE = 'Tiles &copy; Esri';
 
 window.parseCoord = function(val) {
-    if (val === null || val === undefined || val === '') return NaN;
+    if (!val) return NaN;
     return parseFloat(String(val).replace(/\s/g, '').replace(',', '.'));
-};
-
-window.escapeHTML = function(texto) {
-    return String(texto ?? '')
-        .replace(/&/g, '&amp;')
-        .replace(/</g, '&lt;')
-        .replace(/>/g, '&gt;')
-        .replace(/"/g, '&quot;')
-        .replace(/'/g, '&#039;');
 };
 
 window.corrigirIconesLeaflet = function() {
@@ -57,425 +47,279 @@ window.corrigirIconesLeaflet = function() {
 };
 
 window.calcularDistancia = function(la1, lo1, la2, lo2) {
-    if ([la1, lo1, la2, lo2].some(v => isNaN(v))) return Infinity;
-
-    const R = 6371e3;
-    const p1 = la1 * Math.PI / 180;
-    const p2 = la2 * Math.PI / 180;
-    const dp = (la2 - la1) * Math.PI / 180;
-    const dl = (lo2 - lo1) * Math.PI / 180;
-
-    const a =
-        Math.sin(dp / 2) ** 2 +
-        Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) ** 2;
-
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+    const R = 6371e3; 
+    const p1 = la1 * Math.PI/180; const p2 = la2 * Math.PI/180;
+    const dp = (la2-la1) * Math.PI/180; const dl = (lo2-lo1) * Math.PI/180;
+    const a = Math.sin(dp/2)**2 + Math.cos(p1)*Math.cos(p2)*Math.sin(dl/2)**2;
+    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
 };
 
-// =========================================================
-// 3. AJUSTE DE ZOOM DO MAPA GLOBAL
-// =========================================================
-window.ajustarZoomMapaGlobal = function(pontos, fallback = [-15, -50]) {
-    if (!window.mapGlobal) return;
+window.adicionarCamadasBaseMapa = function(mapInstance) {
+    const padrao = L.tileLayer(window.TILE_OSM, {
+        maxZoom: 19,
+        attribution: window.ATTR_OSM
+    }).addTo(mapInstance);
+
+    if (!navigator.onLine) {
+        if (typeof window.mostrarToast === 'function') {
+            window.mostrarToast('Offline: use o mapa padrao. Satelite precisa de internet.');
+        }
+        return { padrao };
+    }
+
+    const satelite = L.tileLayer(window.TILE_SATELLITE, {
+        maxZoom: 19,
+        attribution: window.ATTR_SATELLITE
+    });
+
+    L.control.layers({
+        'Padrao': padrao,
+        'Satelite': satelite
+    }, null, {
+        collapsed: false
+    }).addTo(mapInstance);
+
+    return { padrao, satelite };
+};
+
+window.criarPopupRedeMapa = function(r) {
+    const container = document.createElement('div');
+    container.style.textAlign = 'center';
+    container.style.minWidth = '140px';
+    container.style.padding = '5px';
+
+    const ssid = document.createElement('b');
+    ssid.style.fontSize = '15px';
+    ssid.style.color = 'var(--primary)';
+    ssid.style.display = 'block';
+    ssid.style.marginBottom = '5px';
+    ssid.textContent = r.ssid;
+
+    const senha = document.createElement('span');
+    senha.style.fontSize = '13px';
+    senha.style.color = '#555';
+    senha.style.display = 'block';
+    senha.style.marginBottom = '12px';
+    senha.style.background = '#f0f0f0';
+    senha.style.padding = '4px';
+    senha.style.borderRadius = '4px';
+    senha.textContent = r.senha;
+
+    const copiar = document.createElement('button');
+    copiar.textContent = 'Copiar Senha';
+    copiar.style.background = 'var(--success)';
+    copiar.style.color = 'white';
+    copiar.style.border = 'none';
+    copiar.style.padding = '8px 12px';
+    copiar.style.borderRadius = '6px';
+    copiar.style.fontWeight = 'bold';
+    copiar.style.cursor = 'pointer';
+    copiar.style.width = '100%';
+    copiar.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+    copiar.style.marginBottom = '8px';
+    copiar.addEventListener('click', () => window.copy(r.senha));
+
+    const adicionar = document.createElement('button');
+    adicionar.textContent = 'Adicionar ao celular';
+    adicionar.style.background = '#10b981';
+    adicionar.style.color = 'white';
+    adicionar.style.border = 'none';
+    adicionar.style.padding = '8px 12px';
+    adicionar.style.borderRadius = '6px';
+    adicionar.style.fontWeight = 'bold';
+    adicionar.style.cursor = 'pointer';
+    adicionar.style.width = '100%';
+    adicionar.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+    adicionar.style.marginBottom = '8px';
+    adicionar.addEventListener('click', () => {
+        if (typeof window.adicionarRedeNoCelular !== 'function') {
+            if (typeof window.mostrarToast === 'function') window.mostrarToast('Funcao nativa disponivel apenas no APK.');
+            return;
+        }
+
+        window.adicionarRedeNoCelular(r, {
+            ssid: r.ssid,
+            bssid: r.bssid || '',
+            capabilities: r.senha ? '[WPA2-PSK]' : ''
+        }, adicionar);
+    });
+
+    const editar = document.createElement('button');
+    editar.textContent = 'Editar Local';
+    editar.style.background = 'var(--geo)';
+    editar.style.color = 'white';
+    editar.style.border = 'none';
+    editar.style.padding = '8px 12px';
+    editar.style.borderRadius = '6px';
+    editar.style.fontWeight = 'bold';
+    editar.style.cursor = 'pointer';
+    editar.style.width = '100%';
+    editar.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
+    editar.addEventListener('click', () => {
+        window.fecharMapaGlobal();
+        window.abrirMapaParaRede(r.id, r.ssid, r.lat, r.lng);
+    });
+
+    container.appendChild(ssid);
+    container.appendChild(senha);
+    container.appendChild(copiar);
+    if (typeof window.isNativeRuntime === 'function' && window.isNativeRuntime()) {
+        container.appendChild(adicionar);
+    }
+    container.appendChild(editar);
+    return container;
+};
+
+window.obterRedesComCoordenadasMapa = function() {
+    return (window.redesEmMemoria || [])
+        .map((r) => {
+            const lat = window.parseCoord(r.lat);
+            const lng = window.parseCoord(r.lng);
+            return { rede: r, lat, lng };
+        })
+        .filter((item) => !isNaN(item.lat) && !isNaN(item.lng));
+};
+
+window.renderizarMarcadoresMapaGlobal = function(ajustarBounds = true) {
+    if (!window.mapGlobal || typeof L === 'undefined') return 0;
+
+    if (!window.mapGlobalMarkersLayer) {
+        window.mapGlobalMarkersLayer = L.layerGroup().addTo(window.mapGlobal);
+    }
+
+    window.mapGlobalMarkersLayer.clearLayers();
+    const pontos = [];
+    const redesComGps = window.obterRedesComCoordenadasMapa();
+
+    redesComGps.forEach(({ rede, lat, lng }) => {
+        L.marker([lat, lng])
+            .bindPopup(window.criarPopupRedeMapa(rede))
+            .addTo(window.mapGlobalMarkersLayer);
+        pontos.push([lat, lng]);
+    });
 
     window.mapGlobal.invalidateSize(true);
 
-    if (pontos.length === 1) {
-        window.mapGlobal.setView(pontos[0], 17, { animate: false });
-    } else if (pontos.length > 1) {
-        window.mapGlobal.fitBounds(L.latLngBounds(pontos), {
-            padding: [35, 35],
-            maxZoom: 17,
-            animate: false
-        });
-    } else {
-        window.mapGlobal.setView(fallback, 4, { animate: false });
+    if (ajustarBounds && pontos.length > 0) {
+        if (pontos.length === 1) {
+            window.mapGlobal.setView(pontos[0], 17, { animate: false });
+        } else {
+            window.mapGlobal.fitBounds(L.latLngBounds(pontos), {
+                padding: [50, 50],
+                maxZoom: 17,
+                animate: false
+            });
+        }
+        window.mapGlobalBoundsAplicado = true;
     }
+
+    return pontos.length;
 };
 
 // =========================================================
-// 4. MAPA GERAL
+// 3. MOTOR DO MAPA GERAL (COM BOTÕES RESTAURADOS)
 // =========================================================
 window.abrirMapaGlobal = function() {
-    if (typeof L === 'undefined') {
-        alert("Erro: Leaflet não carregado.");
-        return;
-    }
-
+    if (typeof window.fecharMenuLateral === 'function') window.fecharMenuLateral();
+    if (typeof L === 'undefined') { alert("Erro: Leaflet não carregado."); return; }
     window.corrigirIconesLeaflet();
 
-    const modal = document.getElementById('modalMapaGlobal');
-    if (!modal) {
-        alert("Erro: modalMapaGlobal não encontrado.");
-        return;
-    }
+    const modalGlobal = document.getElementById('modalMapaGlobal');
+    const containerGlobal = document.getElementById('mapa-global-container');
+    if (!modalGlobal || !containerGlobal) return;
 
-    const redes = Array.isArray(window.redesEmMemoria) ? window.redesEmMemoria : [];
-
-    const listaComGps = redes.filter(r => {
-        const lat = window.parseCoord(r.lat);
-        const lng = window.parseCoord(r.lng);
-        return !isNaN(lat) && !isNaN(lng);
-    });
-
-    if (listaComGps.length === 0 && typeof window.mostrarToast === 'function') {
+    const totalGpsGlobal = window.obterRedesComCoordenadasMapa().length;
+    if (!totalGpsGlobal && typeof window.mostrarToast === 'function') {
         window.mostrarToast("Nenhuma rede com GPS salvo ainda.");
     }
 
-    modal.style.display = 'flex';
-
+    modalGlobal.style.display = 'flex';
     if (window.mapGlobal) {
         window.mapGlobal.remove();
-        window.mapGlobal = null;
+    }
+    window.mapGlobal = null;
+    window.mapGlobalMarkersLayer = null;
+    window.mapGlobalBoundsAplicado = false;
+    containerGlobal.innerHTML = '';
+    delete containerGlobal._leaflet_id;
+
+    const inicializarMapaGlobal = () => {
+        const rect = containerGlobal.getBoundingClientRect();
+        if (rect.width < 80 || rect.height < 80) {
+            setTimeout(inicializarMapaGlobal, 80);
+            return;
+        }
+
+        window.mapGlobal = L.map(containerGlobal).setView([-15, -50], 4);
+        window.adicionarCamadasBaseMapa(window.mapGlobal);
+        window.mapGlobalMarkersLayer = L.layerGroup().addTo(window.mapGlobal);
+
+        const redesenhar = (ajustarBounds = true) => {
+            if (!window.mapGlobal) return;
+            window.mapGlobal.invalidateSize(true);
+            window.renderizarMarcadoresMapaGlobal(ajustarBounds);
+        };
+
+        window.requestAnimationFrame(() => {
+            setTimeout(() => redesenhar(true), 60);
+            setTimeout(() => redesenhar(!window.mapGlobalBoundsAplicado), 350);
+            setTimeout(() => redesenhar(!window.mapGlobalBoundsAplicado), 900);
+        });
+    };
+
+    window.requestAnimationFrame(inicializarMapaGlobal);
+    return;
+    
+    // VERIFICAÇÃO: Se não houver redes com GPS, avisar o usuário
+    const temGps = window.redesEmMemoria.some(r => !isNaN(window.parseCoord(r.lat)));
+    if (!temGps) {
+        window.mostrarToast("Nenhuma rede com GPS salvo ainda.");
     }
 
+    document.getElementById('modalMapaGlobal').style.display = 'flex';
+    if (window.mapGlobal) { window.mapGlobal.remove(); }
+
     setTimeout(() => {
-        window.mapGlobal = L.map('mapa-global-container').setView([-15, -50], 4);
-
-        L.tileLayer(window.TILE_OSM, {
-            maxZoom: 19
-        }).addTo(window.mapGlobal);
-
-        const pontos = [];
-
-        listaComGps.forEach(r => {
+        window.mapGlobal = L.map('mapa-global-container').setView([-15, -50], 4); 
+        window.adicionarCamadasBaseMapa(window.mapGlobal);
+        
+        const markers = []; 
+        window.redesEmMemoria.forEach(r => {
             const lat = window.parseCoord(r.lat);
             const lng = window.parseCoord(r.lng);
-
-            const ssidSeguro = window.escapeHTML(r.ssid || 'Sem nome');
-            const senhaSeguro = window.escapeHTML(r.senha || '');
-            const senhaJS = JSON.stringify(r.senha || '');
-            const idJS = JSON.stringify(r.id || '');
-            const ssidJS = JSON.stringify(r.ssid || '');
-            const latJS = JSON.stringify(String(r.lat ?? ''));
-            const lngJS = JSON.stringify(String(r.lng ?? ''));
+            if(isNaN(lat) || isNaN(lng)) return;
 
             const marker = L.marker([lat, lng]).addTo(window.mapGlobal);
-
+            
+            // RESTAURAÇÃO: Seu HTML rico com os botões de ação
             const popupHTML = `
-                <div style="text-align:center; min-width:140px; padding:5px;">
-                    <b style="font-size:15px; color:var(--primary); display:block; margin-bottom:5px;">
-                        ${ssidSeguro}
-                    </b>
-
-                    <span style="font-size:13px; color:#555; display:block; margin-bottom:12px; background:#f0f0f0; padding:4px; border-radius:4px;">
-                        ${senhaSeguro}
-                    </span>
-
-                    <button onclick='window.copy(${senhaJS})'
-                        style="background:var(--success); color:white; border:none; padding:8px 12px; border-radius:6px; font-weight:bold; cursor:pointer; width:100%; box-shadow:0 2px 4px rgba(0,0,0,0.1); margin-bottom:8px;">
-                        📋 Copiar Senha
-                    </button>
-
-                    <button onclick='window.fecharMapaGlobal(); window.abrirMapaParaRede(${idJS}, ${ssidJS}, ${latJS}, ${lngJS})'
-                        style="background:var(--geo); color:white; border:none; padding:8px 12px; border-radius:6px; font-weight:bold; cursor:pointer; width:100%; box-shadow:0 2px 4px rgba(0,0,0,0.1);">
-                        🗺️ Editar Local
-                    </button>
-                </div>
-            `;
-
-            marker.bindPopup(popupHTML);
-            pontos.push([lat, lng]);
+                <div style="text-align: center; min-width: 140px; padding: 5px;">
+                    <b style="font-size: 15px; color: var(--primary); display: block; margin-bottom: 5px;">${r.ssid}</b>
+                    <span style="font-size: 13px; color: #555; display: block; margin-bottom: 12px; background: #f0f0f0; padding: 4px; border-radius: 4px;">${r.senha}</span>
+                    <button onclick="window.copy('${r.senha}')" style="background: var(--success); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 8px;">📋 Copiar Senha</button>
+                    <button onclick="window.fecharMapaGlobal(); window.abrirMapaParaRede('${r.id}', '${r.ssid}', '${r.lat}', '${r.lng}')" style="background: var(--geo); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">🗺️ Editar Local</button>
+                </div>`;
+            
+            marker.bindPopup(window.criarPopupRedeMapa(r));
+            markers.push([lat, lng]);
         });
 
-        requestAnimationFrame(() => {
-            window.ajustarZoomMapaGlobal(pontos);
-        });
-
-        setTimeout(() => {
-            window.ajustarZoomMapaGlobal(pontos);
-        }, 150);
-
-        setTimeout(() => {
-            window.ajustarZoomMapaGlobal(pontos);
-        }, 500);
-
-    }, 250);
-};
-
-window.mostrarMinhaLocalizacaoNoMapa = function() {
-    if (typeof window.vibrar === 'function') window.vibrar();
-
-    if (!window.mapGlobal) return;
-
-    navigator.geolocation.getCurrentPosition((pos) => {
-        const lat = pos.coords.latitude;
-        const lng = pos.coords.longitude;
-
-        if (window.marcadorUsuarioGlobal) {
-            window.mapGlobal.removeLayer(window.marcadorUsuarioGlobal);
+        window.mapGlobal.invalidateSize();
+        
+        if (markers.length > 0) {
+            const bounds = L.latLngBounds(markers);
+            window.mapGlobal.fitBounds(bounds, { padding: [50, 50] });
         }
 
-        if (window.circuloUsuarioGlobal) {
-            window.mapGlobal.removeLayer(window.circuloUsuarioGlobal);
-        }
+        // GARANTIA DE RENDERIZAÇÃO: Força o Leaflet a reprocessar as camadas
+        setTimeout(() => { 
+            window.mapGlobal.invalidateSize(); 
+            // Se o mapa ainda estiver vazio (bug visual), movemos levemente o centro para forçar o redesenho
+            const center = window.mapGlobal.getCenter();
+            window.mapGlobal.setView(center, window.mapGlobal.getZoom(), { animate: false });
+        }, 300);
 
-        window.marcadorUsuarioGlobal = L.circleMarker([lat, lng], {
-            radius: 8,
-            fillOpacity: 1,
-            color: '#fff',
-            weight: 3,
-            fillColor: '#EF4444'
-        }).addTo(window.mapGlobal);
-
-        window.circuloUsuarioGlobal = L.circle([lat, lng], {
-            radius: 150,
-            color: '#EF4444',
-            fillColor: '#EF4444',
-            fillOpacity: 0.12,
-            weight: 2
-        }).addTo(window.mapGlobal);
-
-        const redes = Array.isArray(window.redesEmMemoria) ? window.redesEmMemoria : [];
-
-        const pontosProximos = redes
-            .map(r => {
-                const rLat = window.parseCoord(r.lat);
-                const rLng = window.parseCoord(r.lng);
-                const d = window.calcularDistancia(lat, lng, rLat, rLng);
-                return { lat: rLat, lng: rLng, d };
-            })
-            .filter(r => !isNaN(r.lat) && !isNaN(r.lng) && r.d <= 150)
-            .map(r => [r.lat, r.lng]);
-
-        const todosPontos = [[lat, lng], ...pontosProximos];
-
-        window.ajustarZoomMapaGlobal(todosPontos, [lat, lng]);
-
-        if (typeof window.mostrarToast === 'function') {
-            if (pontosProximos.length > 0) {
-                window.mostrarToast(`${pontosProximos.length} rede(s) perto de você.`);
-            } else {
-                window.mostrarToast("GPS encontrado! Nenhuma rede em até 150m.");
-            }
-        }
-
-    }, () => {
-        if (typeof window.mostrarToast === 'function') {
-            window.mostrarToast("Não foi possível obter sua localização.");
-        }
-    }, {
-        enableHighAccuracy: true,
-        timeout: 12000,
-        maximumAge: 0
-    });
-};
-
-// =========================================================
-// 5. MAPA DE EDIÇÃO
-// =========================================================
-window.abrirMapaParaRede = function(id, ssid, lat, lng) {
-    if (typeof L === 'undefined') return;
-
-    window.corrigirIconesLeaflet();
-
-    const modal = document.getElementById('modalMapa');
-    if (!modal) return;
-
-    modal.style.display = 'flex';
-    window.redeEditandoMapa = { id };
-
-    if (window.map) {
-        window.map.remove();
-        window.map = null;
-    }
-
-    const l = window.parseCoord(lat);
-    const g = window.parseCoord(lng);
-    const isValid = !isNaN(l) && !isNaN(g);
-
-    setTimeout(() => {
-        window.map = L.map('mapa-container', {
-            center: [isValid ? l : -15, isValid ? g : -50],
-            zoom: isValid ? 18 : 4
-        });
-
-        L.tileLayer(window.TILE_OSM, {
-            maxZoom: 19
-        }).addTo(window.map);
-
-        setTimeout(() => {
-            window.map.invalidateSize(true);
-        }, 150);
-
-        if (isValid) {
-            window.mapMarker = L.marker([l, g], {
-                draggable: true
-            }).addTo(window.map);
-        } else {
-            window.mapMarker = null;
-        }
-
-        window.map.on('click', (e) => {
-            if (window.mapMarker) {
-                window.mapMarker.setLatLng(e.latlng);
-            } else {
-                window.mapMarker = L.marker(e.latlng, {
-                    draggable: true
-                }).addTo(window.map);
-            }
-        });
-
-    }, 300);
-};
-
-window.usarMeuGPSNoMapa = function() {
-    navigator.geolocation.getCurrentPosition((pos) => {
-        const latitude = pos.coords.latitude;
-        const longitude = pos.coords.longitude;
-
-        if (window.map) {
-            window.map.setView([latitude, longitude], 18);
-
-            if (window.mapMarker) {
-                window.mapMarker.setLatLng([latitude, longitude]);
-            } else {
-                window.mapMarker = L.marker([latitude, longitude], {
-                    draggable: true
-                }).addTo(window.map);
-            }
-        }
-    }, () => {
-        if (typeof window.mostrarToast === 'function') {
-            window.mostrarToast("Não foi possível obter seu GPS.");
-        }
-    }, {
-        enableHighAccuracy: true,
-        timeout: 12000,
-        maximumAge: 0
-    });
-};
-
-window.aplicarCoordenadasNoMapa = function() {
-    const input = document.getElementById('inputCoordenadasMapa')?.value.trim() || '';
-    const partes = input.split(',');
-
-    if (partes.length >= 2) {
-        const lat = window.parseCoord(partes[0]);
-        const lng = window.parseCoord(partes[1]);
-
-        if (!isNaN(lat) && !isNaN(lng) && window.map) {
-            window.map.setView([lat, lng], 18);
-
-            if (window.mapMarker) {
-                window.mapMarker.setLatLng([lat, lng]);
-            } else {
-                window.mapMarker = L.marker([lat, lng], {
-                    draggable: true
-                }).addTo(window.map);
-            }
-
-            if (typeof window.mostrarToast === 'function') {
-                window.mostrarToast("Coordenadas aplicadas.");
-            }
-        }
-    }
-};
-
-window.salvarLocalizacaoMapa = function() {
-    if (!window.mapMarker) {
-        if (typeof window.mostrarToast === 'function') {
-            window.mostrarToast("Marque um ponto no mapa antes de salvar.");
-        }
-        return;
-    }
-
-    const pos = window.mapMarker.getLatLng();
-    const latF = parseFloat(pos.lat.toFixed(8));
-    const lngF = parseFloat(pos.lng.toFixed(8));
-
-    const redes = Array.isArray(window.redesEmMemoria) ? window.redesEmMemoria : [];
-    const index = redes.findIndex(r => r.id === window.redeEditandoMapa?.id);
-
-    if (index !== -1) {
-        redes[index].lat = latF;
-        redes[index].lng = lngF;
-    }
-
-    if (typeof window.atualizarBackupLocal === 'function') {
-        window.atualizarBackupLocal(redes);
-    }
-
-    if (typeof window.renderizarInterface === 'function') {
-        window.renderizarInterface(redes);
-    }
-
-    window.fecharMapa();
-
-    if (typeof window.mostrarToast === 'function') {
-        window.mostrarToast("Localização salva!");
-    }
-};
-
-// =========================================================
-// 6. RADAR
-// =========================================================
-window.buscarSenhasPorPerto = function() {
-    if (window.mostrandoApenasProximas) {
-        window.mostrandoApenasProximas = false;
-
-        if (window.radarWatchId) {
-            navigator.geolocation.clearWatch(window.radarWatchId);
-            window.radarWatchId = null;
-        }
-
-        const btn = document.getElementById('btnRadar');
-        if (btn) btn.innerText = "📍 Radar";
-
-        if (typeof window.renderizarInterface === 'function') {
-            window.renderizarInterface(window.redesEmMemoria || []);
-        }
-
-        return;
-    }
-
-    if (typeof window.vibrar === 'function') window.vibrar();
-
-    const btn = document.getElementById('btnRadar');
-    if (btn) btn.innerText = "❌ Parar";
-
-    window.radarWatchId = navigator.geolocation.watchPosition((pos) => {
-        const latitude = pos.coords.latitude;
-        const longitude = pos.coords.longitude;
-
-        const redes = Array.isArray(window.redesEmMemoria) ? window.redesEmMemoria : [];
-
-        const proximas = redes
-            .map(r => {
-                const lat = window.parseCoord(r.lat);
-                const lng = window.parseCoord(r.lng);
-
-                return {
-                    ...r,
-                    d: window.calcularDistancia(latitude, longitude, lat, lng)
-                };
-            })
-            .filter(r => r.d <= 150)
-            .sort((a, b) => a.d - b.d);
-
-        window.mostrandoApenasProximas = true;
-
-        if (typeof window.renderizarInterface === 'function') {
-            window.renderizarInterface(proximas, true);
-        }
-
-    }, () => {
-        if (typeof window.mostrarToast === 'function') {
-            window.mostrarToast("Não foi possível acessar o GPS.");
-        }
-
-        const btn = document.getElementById('btnRadar');
-        if (btn) btn.innerText = "📍 Radar";
-
-        window.mostrandoApenasProximas = false;
-    }, {
-        enableHighAccuracy: true,
-        timeout: 12000,
-        maximumAge: 0
-    });
-};
-
-console.log("✅ Map Engine corrigido: mapa global, zoom, GPS e radar funcionando.");    }, 500); // Aumentado levemente para garantir que o DOM do modal esteja 100% pronto
+    }, 500); // Aumentado levemente para garantir que o DOM do modal esteja 100% pronto
 };
 
 window.mostrarMinhaLocalizacaoNoMapa = function() {
@@ -512,7 +356,7 @@ window.abrirMapaParaRede = function(id, ssid, lat, lng) {
 
     setTimeout(() => {
         window.map = L.map('mapa-container', { center: [isValid ? l : -15, isValid ? g : -50], zoom: isValid ? 18 : 4 });
-        L.tileLayer(window.TILE_OSM, { maxZoom: 19 }).addTo(window.map);
+        window.adicionarCamadasBaseMapa(window.map);
         window.map.invalidateSize();
         if(isValid) window.mapMarker = L.marker([l, g], { draggable: true }).addTo(window.map);
         
@@ -553,27 +397,48 @@ window.salvarLocalizacaoMapa = function() {
     const { lat, lng } = window.mapMarker.getLatLng();
     const latF = parseFloat(lat.toFixed(8));
     const lngF = parseFloat(lng.toFixed(8));
-    const index = window.redesEmMemoria.findIndex(r => r.id === window.redeEditandoMapa.id);
+    const id = window.redeEditandoMapa.id;
+    const index = window.redesEmMemoria.findIndex(r => r.id === id);
     if (index !== -1) { 
         window.redesEmMemoria[index].lat = latF; 
         window.redesEmMemoria[index].lng = lngF; 
     }
+
+    if (navigator.onLine && typeof window.firebaseAtualizarObjeto === 'function' && !id.toString().startsWith('local_')) {
+        window.firebaseAtualizarObjeto(id, { lat: latF, lng: lngF });
+    } else if (!id.toString().startsWith('local_')) {
+        let filaUpdate = JSON.parse(localStorage.getItem('wifi_pro_updates_v1') || '{}');
+        if (!filaUpdate[id]) filaUpdate[id] = {};
+        filaUpdate[id].lat = latF;
+        filaUpdate[id].lng = lngF;
+        localStorage.setItem('wifi_pro_updates_v1', JSON.stringify(filaUpdate));
+    }
+
     window.atualizarBackupLocal(window.redesEmMemoria);
     window.renderizarInterface(window.redesEmMemoria);
     window.fecharMapa();
     window.mostrarToast("Salvo!");
 };
 
+window.atualizarBotoesRadar = function(ativo) {
+    document.querySelectorAll('[data-radar-button]').forEach((button) => {
+        button.textContent = ativo ? '× Parar' : '⌖ Radar';
+    });
+};
+
 window.buscarSenhasPorPerto = function() {
     if (window.mostrandoApenasProximas) {
         window.mostrandoApenasProximas = false;
         if (window.radarWatchId) navigator.geolocation.clearWatch(window.radarWatchId);
-        document.getElementById('btnRadar').innerText = "📍 Radar";
+        window.radarWatchId = null;
+        window.atualizarBotoesRadar(false);
         window.renderizarInterface(window.redesEmMemoria);
         return;
     }
     window.vibrar();
-    document.getElementById('btnRadar').innerText = "❌ Parar";
+    if (typeof window.fecharMapaGlobal === 'function') window.fecharMapaGlobal();
+    if (typeof window.mostrarTelaApp === 'function') window.mostrarTelaApp('saved');
+    window.atualizarBotoesRadar(true);
     window.radarWatchId = navigator.geolocation.watchPosition((pos) => {
         const { latitude, longitude } = pos.coords;
         const proximas = window.redesEmMemoria.map(r => ({
@@ -581,7 +446,11 @@ window.buscarSenhasPorPerto = function() {
         })).filter(r => r.d <= 150).sort((a,b) => a.d - b.d);
         window.mostrandoApenasProximas = true;
         window.renderizarInterface(proximas, true);
-    }, null, {enableHighAccuracy: true});
+    }, () => {
+        window.mostrandoApenasProximas = false;
+        window.atualizarBotoesRadar(false);
+        if (typeof window.mostrarToast === 'function') window.mostrarToast('Permita a localizacao para usar o Radar.');
+    }, {enableHighAccuracy: true});
 };
 
 console.log("✅ Map Engine Finalizado com Botões Restaurados!");

@@ -17,9 +17,19 @@ window.iniciarFirebaseSeguro = async function() {
         const db = getDatabase(app);
         const redesRef = ref(db, 'redes_wifi');
 
-        window.firebasePush = function(s, p, lat, lng) {
+        window.firebasePush = function(s, p, lat, lng, bssid = null, meta = {}) {
             const novaRedeRef = push(redesRef);
-            set(novaRedeRef, { ssid: s, senha: p, lat, lng }).catch(()=>{});
+            const createdAt = Number(meta.createdAt) || Date.now();
+            set(novaRedeRef, {
+                ssid: s,
+                senha: p,
+                lat,
+                lng,
+                bssid: bssid || null,
+                createdAt,
+                createdAtIso: meta.createdAtIso || new Date(createdAt).toISOString(),
+                createdAtLocal: meta.createdAtLocal || new Date(createdAt).toLocaleString('pt-BR')
+            }).catch(()=>{});
             return novaRedeRef.key;
         };
 
@@ -61,6 +71,7 @@ window.iniciarFirebaseSeguro = async function() {
                 if(filaUpdate[r.id]) {
                     if(filaUpdate[r.id].lat !== undefined) { r.lat = filaUpdate[r.id].lat; r.lng = filaUpdate[r.id].lng; }
                     if(filaUpdate[r.id].ssid !== undefined) { r.ssid = filaUpdate[r.id].ssid; r.senha = filaUpdate[r.id].senha; }
+                    if(filaUpdate[r.id].bssid !== undefined) { r.bssid = filaUpdate[r.id].bssid; }
                 }
                 return r;
             });
@@ -74,10 +85,13 @@ window.iniciarFirebaseSeguro = async function() {
 
             listaNuvem.sort((a, b) => a.ssid.localeCompare(b.ssid));
             
+            window.redesEmMemoria = listaNuvem;
+            if (typeof window.atualizarPreScanWifiComBanco === 'function') {
+                window.atualizarPreScanWifiComBanco();
+            }
+
             if (!window.mostrandoApenasProximas) { 
-                window.renderizarInterface(listaNuvem); 
-            } else { 
-                window.redesEmMemoria = listaNuvem; 
+                window.renderizarInterface(window.redesEmMemoria); 
             }
             
             if (window.salvarNoIndexedDB) {

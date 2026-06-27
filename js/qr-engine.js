@@ -1,4 +1,4 @@
-window.processarTextoQR = function(text, target) {
+window.processarTextoQR = function(text, target, origem = 'manual') {
     if (text.toUpperCase().startsWith("WIFI:")) {
         let s = "", p = ""; const pts = text.substring(5).split(";");
         for (let pt of pts) { 
@@ -13,6 +13,16 @@ window.processarTextoQR = function(text, target) {
             } else {
                 document.getElementById('novoSSID').value = s; 
                 document.getElementById('novaSenha').value = p; 
+                const conectarAposSalvar = origem === 'camera';
+                window.novaRedeBssidSugerida = null;
+                window.novaRedeWifiSugerida = conectarAposSalvar ? {
+                    ssid: s,
+                    bssid: '',
+                    capabilities: p ? '[WPA2-PSK]' : '',
+                    level: null,
+                    conectarAposSalvar: true
+                } : null;
+                window.novaRedeConectarAposCadastro = conectarAposSalvar;
                 window.checarDuplicadoModal(); 
                 window.mostrarToast("QR Code importado!");
             }
@@ -22,8 +32,202 @@ window.processarTextoQR = function(text, target) {
     }
 };
 
+function getQrNativePlugin() {
+    if (!window.Capacitor) return null;
+    if (window.Capacitor.Plugins && window.Capacitor.Plugins.WifiNative) {
+        return window.Capacitor.Plugins.WifiNative;
+    }
+    if (typeof window.Capacitor.registerPlugin === 'function') {
+        return window.WifiNativePluginProxy || (window.WifiNativePluginProxy = window.Capacitor.registerPlugin('WifiNative'));
+    }
+    return null;
+}
+
+function isQrNativeCameraAvailable() {
+    return !!(getQrNativePlugin() && window.Capacitor && window.Capacitor.isNativePlatform());
+}
+
+async function garantirPermissaoCameraNativa() {
+    if (!window.Capacitor || !window.Capacitor.isNativePlatform || !window.Capacitor.isNativePlatform()) {
+        return true;
+    }
+
+    const plugin = getQrNativePlugin();
+    if (!plugin || typeof plugin.requestCameraPermission !== 'function') {
+        return true;
+    }
+
+    try {
+        const result = await plugin.requestCameraPermission();
+        return !!(result && result.granted);
+    } catch (error) {
+        console.warn("Permissao de camera nao concedida:", error);
+        return false;
+    }
+}
+
+function aguardar(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function descreverErroCamera(error) {
+    const texto = String((error && (error.message || error.name)) || error || "");
+    if (/notallowed|permission|denied/i.test(texto)) {
+        return "A camera esta permitida no Android, mas o WebView recusou o video. Feche outros apps de camera e tente novamente.";
+    }
+    if (/notfound|not found|no camera|devicesnotfound/i.test(texto)) {
+        return "Nenhuma camera foi encontrada pelo scanner.";
+    }
+    if (/notreadable|trackstart|could not start|in use|source/i.test(texto)) {
+        return "A camera parece estar em uso por outro aplicativo. Feche outros apps de camera e tente de novo.";
+    }
+    if (/overconstrained|constraint|facingmode/i.test(texto)) {
+        return "A camera do aparelho nao aceitou a configuracao solicitada. Tente novamente.";
+    }
+    return texto ? `Erro da camera: ${texto.substring(0, 120)}` : "Nao foi possivel iniciar a camera.";
+}
+
+async function obterCamerasQrDisponiveis() {
+    if (typeof Html5Qrcode === 'undefined' || typeof Html5Qrcode.getCameras !== 'function') {
+        return [];
+    }
+
+    try {
+        const cameras = await Html5Qrcode.getCameras();
+        return Array.isArray(cameras) ? cameras.filter(camera => camera && camera.id) : [];
+    } catch (error) {
+        console.warn("Nao foi possivel listar cameras:", error);
+        return [];
+    }
+}
+
+function montarTentativasCamera(cameras) {
+    const tentativas = [];
+    const ids = new Set();
+    const cameraTraseira = cameras.find(camera => /back|rear|environment|traseir|posterior|0/i.test(camera.label || camera.id || ""));
+
+    const adicionarCamera = (camera) => {
+        if (!camera || !camera.id || ids.has(camera.id)) return;
+        ids.add(camera.id);
+        tentativas.push({ alvo: camera.id, nome: camera.label || "camera detectada" });
+    };
+
+    adicionarCamera(cameraTraseira);
+    cameras.forEach(adicionarCamera);
+    tentativas.push({ alvo: { facingMode: "environment" }, nome: "camera traseira" });
+    tentativas.push({ alvo: { facingMode: { ideal: "environment" } }, nome: "camera traseira flexivel" });
+    tentativas.push({ alvo: { facingMode: "user" }, nome: "camera frontal" });
+    return tentativas;
+}
+
+function configScannerQr() {
+    return {
+        fps: 10,
+        qrbox: { width: 250, height: 250 },
+        disableFlip: false,
+        showTorchButtonIfSupported: true,
+        showZoomSliderIfSupported: true
+    };
+}
+
+async function limparTentativaScanner(scanner) {
+    if (!scanner) return;
+    try {
+        if (typeof scanner.stop === 'function') {
+            await scanner.stop();
+        }
+    } catch (error) {}
+    try {
+        if (typeof scanner.clear === 'function') {
+            scanner.clear();
+        }
+    } catch (error) {}
+}
+
+async function iniciarScannerQrAoVivo(reader, onSuccess) {
+    const cameras = await obterCamerasQrDisponiveis();
+    const tentativas = montarTentativasCamera(cameras);
+    const erros = [];
+
+    for (const tentativa of tentativas) {
+        reader.innerHTML = `<div style="padding: 18px; text-align: center; color: white;">Abrindo ${tentativa.nome}...</div>`;
+        await aguardar(180);
+
+        const scanner = new Html5Qrcode("reader");
+        window.scannerInstancia = scanner;
+
+        try {
+            await scanner.start(tentativa.alvo, configScannerQr(), onSuccess, () => {});
+            return scanner;
+        } catch (error) {
+            console.warn(`Falha ao iniciar ${tentativa.nome}:`, error);
+            erros.push(error);
+            await limparTentativaScanner(scanner);
+            if (window.scannerInstancia === scanner) {
+                window.scannerInstancia = null;
+            }
+            await aguardar(220);
+        }
+    }
+
+    throw new Error(descreverErroCamera(erros[erros.length - 1]));
+}
+
+function base64ToFile(base64, fileName, mimeType) {
+    const binary = atob(base64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+    }
+    return new File([bytes], fileName, { type: mimeType || 'image/jpeg' });
+}
+
+async function escanearQrComCameraNativa(target) {
+    const plugin = getQrNativePlugin();
+    if (!plugin || typeof plugin.captureQrPhoto !== 'function') return false;
+    if (typeof Html5Qrcode === 'undefined') {
+        window.mostrarToast("Biblioteca QR nao carregada.");
+        return true;
+    }
+
+    window.fecharModal();
+    window.fecharModalEditar();
+    document.getElementById('modalScanner').style.display = 'flex';
+    document.getElementById('reader').innerHTML = '<div style="padding: 30px; text-align: center; color: white;">Abrindo camera nativa...</div>';
+
+    const html5QrCode = new Html5Qrcode("reader");
+    try {
+        const photo = await plugin.captureQrPhoto();
+        document.getElementById('reader').innerHTML = '<div style="padding: 30px; text-align: center; color: white;">Lendo QR da foto...</div>';
+        const file = base64ToFile(photo.base64, photo.fileName || 'qr_native.jpg', photo.mimeType || 'image/jpeg');
+
+        try {
+            const sharpFile = await processarImagemParaQR(file);
+            const msg = await html5QrCode.scanFile(sharpFile, true);
+            window.processarTextoQR(msg, target, 'camera');
+        } catch (err1) {
+            const msg = await html5QrCode.scanFile(file, true);
+            window.processarTextoQR(msg, target, 'camera');
+        }
+    } catch (error) {
+        const msg = error && error.message ? error.message : "QR Code nao reconhecido pela camera nativa.";
+        window.mostrarToast(msg);
+    } finally {
+        try {
+            await html5QrCode.clear();
+        } catch (e) {}
+        window.fecharScanner(true);
+    }
+
+    return true;
+}
+
 window.abrirScannerCamera = function(target = 'novo') {
     window.scanTarget = target;
+    if (isQrNativeCameraAvailable()) {
+        escanearQrComCameraNativa(target);
+        return;
+    }
     if (typeof Html5QrcodeScanner === 'undefined') { alert("Conecte-se à internet para usar o scanner."); return; }
     window.fecharModal(); 
     window.fecharModalEditar();
@@ -38,11 +242,48 @@ window.abrirScannerCamera = function(target = 'novo') {
     
     window.scannerInstancia.render((text) => {
         window.fecharScanner(true);
-        window.processarTextoQR(text, window.scanTarget);
+        window.processarTextoQR(text, window.scanTarget, 'camera');
     }, () => {});
 };
 
 // FILTRO DE NITIDEZ (SHARPEN) - Destrói os artefatos de compressão da MIUI
+window.abrirScannerCamera = async function(target = 'novo') {
+    window.scanTarget = target;
+    if (typeof Html5Qrcode === 'undefined') { alert("Biblioteca QR nao carregada."); return; }
+
+    const cameraLiberada = await garantirPermissaoCameraNativa();
+    if (!cameraLiberada) {
+        window.mostrarToast("Permissao da camera negada. Libere a camera nas permissoes do app.");
+        return;
+    }
+
+    window.fecharModal();
+    window.fecharModalEditar();
+
+    const modal = document.getElementById('modalScanner');
+    const reader = document.getElementById('reader');
+    modal.style.display = 'flex';
+    reader.innerHTML = '<div style="padding: 18px; text-align: center; color: white;">Abrindo scanner...</div>';
+
+    let finalizado = false;
+
+    try {
+        await iniciarScannerQrAoVivo(
+            reader,
+            (text) => {
+                if (finalizado) return;
+                finalizado = true;
+                window.fecharScanner(true);
+                window.processarTextoQR(text, window.scanTarget, 'camera');
+            }
+        );
+    } catch (error) {
+        console.error("Falha ao iniciar scanner ao vivo:", error);
+        window.mostrarToast(error && error.message ? error.message : "Nao foi possivel abrir o scanner.");
+        window.fecharScanner(true);
+    }
+};
+
 function sharpenCanvas(ctx, w, h, mix) {
     const weights = [0, -1, 0, -1, 5, -1, 0, -1, 0];
     const katet = Math.round(Math.sqrt(weights.length));
@@ -145,13 +386,13 @@ window.escanearImagemQR = async function(e, target = 'novo') {
     try {
         const sharpFile = await processarImagemParaQR(originalFile);
         const qrCodeMessage = await html5QrCode.scanFile(sharpFile, true);
-        window.processarTextoQR(qrCodeMessage, window.scanTarget);
+        window.processarTextoQR(qrCodeMessage, window.scanTarget, 'galeria');
         
     } catch (err1) {
         console.warn("Falha no arquivo PNG afiado. Tentando bruto.", err1);
         try {
             const msg = await html5QrCode.scanFile(originalFile, true); 
-            window.processarTextoQR(msg, window.scanTarget);
+            window.processarTextoQR(msg, window.scanTarget, 'galeria');
         } catch (err2) {
             console.error("Falha total:", err2);
             window.mostrarToast("QR Code não reconhecido na imagem.");
@@ -164,9 +405,21 @@ window.escanearImagemQR = async function(e, target = 'novo') {
 };
 
 window.fecharScanner = function(voltarParaModalAnterior = false) {
-    if (window.scannerInstancia) { 
-        window.scannerInstancia.clear(); 
-    } 
+    const scanner = window.scannerInstancia;
+    window.scannerInstancia = null;
+    if (scanner) {
+        try {
+            if (typeof scanner.stop === 'function') {
+                scanner.stop().then(() => {
+                    if (typeof scanner.clear === 'function') scanner.clear();
+                }).catch(() => {
+                    if (typeof scanner.clear === 'function') scanner.clear();
+                });
+            } else if (typeof scanner.clear === 'function') {
+                scanner.clear();
+            }
+        } catch (e) {}
+    }
     document.getElementById('modalScanner').style.display = 'none'; 
     document.getElementById('reader').innerHTML = ''; 
     
