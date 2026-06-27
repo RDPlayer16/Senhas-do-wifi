@@ -79,10 +79,7 @@
                         <strong>Redes Salvas</strong>
                         <small id="listSubtitle">Todas as redes cadastradas</small>
                     </div>
-                    <div class="list-toolbar-actions">
-                        <button id="btnStopRadarInline" class="radar-stop-inline" data-radar-stop-button onclick="window.vibrar(); window.buscarSenhasPorPerto()">Parar Radar</button>
-                        <button class="btn-main small-add" onclick="window.abrirModal(); window.vibrar();">＋ Nova</button>
-                    </div>
+                    <button class="btn-main small-add" onclick="window.abrirModal(); window.vibrar();">＋ Nova</button>
                 </div>
                 <div class="search-row">
                     <input type="text" id="searchInput" placeholder="Pesquisar redes..." onkeyup="window.filtrar()">
@@ -269,7 +266,7 @@
             
             <div class="divider">OU DIGITE MANUALMENTE</div>
             <input type="text" id="novoSSID" placeholder="Nome da Rede (SSID)" oninput="window.checarDuplicadoModal()">
-            <input type="text" id="novaSenha" placeholder="Senha" oninput="window.checarDuplicadoModal()">
+            <input type="text" id="novaSenha" minlength="8" placeholder="Senha (minimo 8 caracteres)" oninput="window.checarDuplicadoModal(); window.validarSenhaNovaModal()">
             
             <label style="font-size: 14px; display: flex; align-items: center; gap: 8px; margin-top: 5px;" id="containerCheckLocalizacao">
                 <input type="checkbox" id="checkLocalizacao" checked> Usar GPS (Alta Precisao)
@@ -297,7 +294,7 @@
             <input type="file" id="editQrFileInput" accept="image/png, image/jpeg, image/webp" style="display:none;" onchange="window.escanearImagemQR(event, 'editar')">
 
             <input type="text" id="editSSID" placeholder="Nome da Rede (SSID)">
-            <input type="text" id="editSenha" placeholder="Nova Senha">
+            <input type="text" id="editSenha" minlength="8" placeholder="Nova senha (minimo 8 caracteres)">
             <div style="display:flex; justify-content: space-between; margin-top:15px; gap: 10px;">
                 <button class="btn-delete" style="border: 1px solid var(--danger); background: transparent; color: var(--danger);" onclick="window.vibrar(); window.excluirPeloModalEditar()">Apagar</button>
                 <div style="display:flex; gap:10px;">

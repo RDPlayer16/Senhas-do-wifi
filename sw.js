@@ -1,4 +1,4 @@
-const CACHE_NAME = 'wifi-manager-v36'; // Atualizado para forçar o navegador a instalar a nova versão
+const CACHE_NAME = 'wifi-manager-v39'; // Atualizado para forcar o navegador a instalar a nova versao
 const ASSETS = [
   './',
   './index.html',
@@ -25,7 +25,7 @@ self.addEventListener('install', (e) => {
     caches.open(CACHE_NAME).then((cache) => {
       console.log('✅ Instalando Cache e adicionando recursos...');
       return cache.addAll(ASSETS);
-    })
+    }).then(() => self.clients.claim())
   );
   self.skipWaiting();
 });

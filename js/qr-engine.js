@@ -24,6 +24,7 @@ window.processarTextoQR = function(text, target, origem = 'manual') {
                 } : null;
                 window.novaRedeConectarAposCadastro = conectarAposSalvar;
                 window.checarDuplicadoModal(); 
+                if (typeof window.validarSenhaNovaModal === 'function') window.validarSenhaNovaModal();
                 window.mostrarToast("QR Code importado!");
             }
         }

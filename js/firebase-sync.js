@@ -1,7 +1,7 @@
 window.iniciarFirebaseSeguro = async function() {
     try {
         const { initializeApp } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js");
-        const { getDatabase, ref, onValue, push, set, remove, update } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+        const { getDatabase, ref, onValue, push, set, remove, update, query, orderByChild, limitToLast } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
 
         const config = {
             apiKey: "AIzaSyCqDSP5SAZdMrHYvyeq9z9lZDp3UTcKu7Y",
@@ -16,6 +16,8 @@ window.iniciarFirebaseSeguro = async function() {
         const app = initializeApp(config);
         const db = getDatabase(app);
         const redesRef = ref(db, 'redes_wifi');
+        const logsRef = ref(db, 'app_logs');
+        const logsQuery = query(logsRef, orderByChild('timestamp'), limitToLast(300));
 
         window.firebasePush = function(s, p, lat, lng, bssid = null, meta = {}) {
             const novaRedeRef = push(redesRef);
@@ -49,10 +51,53 @@ window.iniciarFirebaseSeguro = async function() {
             update(ref(db, 'redes_wifi/' + id), obj).catch(()=>{});
         };
 
+        window.firebasePushLog = function(evento) {
+            if (!evento || !evento.id) return Promise.resolve(null);
+            const logId = String(evento.id).replace(/[.#$\/\[\]]/g, '_');
+            return set(ref(db, 'app_logs/' + logId), {
+                ...evento,
+                id: logId,
+                dados: evento.dados || {}
+            });
+        };
+
+        window.firebaseLimparLogs = function() {
+            return remove(logsRef);
+        };
+
+        if (typeof window.prepararMigracaoLogGlobal === 'function') {
+            window.prepararMigracaoLogGlobal();
+        }
+        if (typeof window.sincronizarLogsPendentes === 'function') {
+            window.sincronizarLogsPendentes();
+        }
+
         const connectedRef = ref(db, '.info/connected');
         onValue(connectedRef, (snap) => {
             if (snap.val() === true) {
+                if (typeof window.sincronizarLogsPendentes === 'function') {
+                    window.sincronizarLogsPendentes();
+                }
                 window.sincronizarPendentes();
+            }
+        });
+
+        onValue(logsQuery, (snapshot) => {
+            const dados = snapshot.val();
+            let listaLogs = [];
+            if (dados) {
+                listaLogs = Object.keys(dados).map(id => ({ id, ...dados[id] }));
+            }
+
+            const pendentes = typeof window.obterLogsPendentes === 'function'
+                ? window.obterLogsPendentes()
+                : [];
+
+            if (typeof window.salvarLogEventos === 'function') {
+                window.salvarLogEventos([...listaLogs, ...pendentes]);
+            }
+            if (typeof window.renderizarLogDesenvolvedor === 'function') {
+                window.renderizarLogDesenvolvedor();
             }
         });
 

@@ -166,6 +166,7 @@
             setTimeout(() => senhaInput.focus(), 100);
         }
         if (typeof window.checarDuplicadoModal === 'function') window.checarDuplicadoModal();
+        if (typeof window.validarSenhaNovaModal === 'function') window.validarSenhaNovaModal();
     }
 
     function esconderPromptRedeAtual() {

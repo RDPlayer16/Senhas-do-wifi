@@ -2,6 +2,10 @@
 window.DB_KEY = 'wifi_pro_db_v9';
 window.DB_GEO_KEY = 'wifi_pro_db_geo_v1';
 window.APP_LOG_KEY = 'wifi_pro_event_log_v1';
+window.APP_LOG_PENDING_KEY = 'wifi_pro_event_log_pending_v1';
+window.APP_LOG_DEVICE_KEY = 'wifi_pro_event_log_device_v1';
+window.APP_LOG_MIGRATED_KEY = 'wifi_pro_event_log_migrated_v1';
+window.APP_LOG_LIMIT = 300;
 window.redesEmMemoria = [];
 window.mostrandoApenasProximas = false;
 window.radarWatchId = null;
@@ -99,21 +103,112 @@ window.encontrarRedeMesmoCadastro = function(ssid, senha, bssid = null) {
     });
 };
 
+window.obterLogDeviceId = function() {
+    let deviceId = localStorage.getItem(window.APP_LOG_DEVICE_KEY);
+    if (!deviceId) {
+        deviceId = 'device_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+        localStorage.setItem(window.APP_LOG_DEVICE_KEY, deviceId);
+    }
+    return deviceId;
+};
+
+window.normalizarListaLogEventos = function(log) {
+    const porId = new Map();
+    (Array.isArray(log) ? log : []).forEach((evento) => {
+        if (!evento) return;
+        const timestamp = Number(evento.timestamp || (evento.dados && evento.dados.timestamp) || Date.now());
+        const id = String(evento.id || ('log_' + timestamp + '_' + Math.random().toString(36).slice(2, 8)));
+        const normalizado = {
+            ...evento,
+            id,
+            timestamp,
+            dataIso: evento.dataIso || new Date(timestamp).toISOString(),
+            dataLocal: evento.dataLocal || new Date(timestamp).toLocaleString('pt-BR'),
+            dados: evento.dados || {}
+        };
+        porId.set(id, normalizado);
+    });
+
+    return Array.from(porId.values())
+        .sort((a, b) => (Number(b.timestamp) || 0) - (Number(a.timestamp) || 0))
+        .slice(0, window.APP_LOG_LIMIT || 300);
+};
+
 window.obterLogEventos = function() {
     try {
         const log = JSON.parse(localStorage.getItem(window.APP_LOG_KEY) || '[]');
-        return Array.isArray(log) ? log : [];
+        return window.normalizarListaLogEventos(log);
     } catch (error) {
         return [];
     }
 };
 
 window.salvarLogEventos = function(log) {
-    localStorage.setItem(window.APP_LOG_KEY, JSON.stringify((Array.isArray(log) ? log : []).slice(0, 300)));
+    const normalizado = window.normalizarListaLogEventos(log);
+    localStorage.setItem(window.APP_LOG_KEY, JSON.stringify(normalizado));
+    return normalizado;
+};
+
+window.obterLogsPendentes = function() {
+    try {
+        const log = JSON.parse(localStorage.getItem(window.APP_LOG_PENDING_KEY) || '[]');
+        return window.normalizarListaLogEventos(log);
+    } catch (error) {
+        return [];
+    }
+};
+
+window.salvarLogsPendentes = function(log) {
+    const normalizado = window.normalizarListaLogEventos(log);
+    localStorage.setItem(window.APP_LOG_PENDING_KEY, JSON.stringify(normalizado));
+    return normalizado;
+};
+
+window.adicionarLogPendente = function(evento) {
+    window.salvarLogsPendentes([evento, ...window.obterLogsPendentes()]);
+};
+
+window.removerLogPendente = function(id) {
+    const restante = window.obterLogsPendentes().filter(evento => evento.id !== id);
+    window.salvarLogsPendentes(restante);
+};
+
+window.mesclarLogEventos = function(eventos) {
+    const merged = window.salvarLogEventos([
+        ...window.obterLogEventos(),
+        ...(Array.isArray(eventos) ? eventos : [])
+    ]);
+    if (typeof window.renderizarLogDesenvolvedor === 'function') {
+        window.renderizarLogDesenvolvedor();
+    }
+    return merged;
+};
+
+window.sincronizarLogsPendentes = async function() {
+    if (typeof window.firebasePushLog !== 'function' || !navigator.onLine) return;
+    const pendentes = window.obterLogsPendentes();
+    for (const evento of pendentes) {
+        try {
+            await window.firebasePushLog(evento);
+            window.removerLogPendente(evento.id);
+        } catch (error) {
+            break;
+        }
+    }
+};
+
+window.prepararMigracaoLogGlobal = function() {
+    if (localStorage.getItem(window.APP_LOG_MIGRATED_KEY) === 'true') return;
+    const locais = window.obterLogEventos();
+    if (locais.length > 0) {
+        window.salvarLogsPendentes([...window.obterLogsPendentes(), ...locais]);
+    }
+    localStorage.setItem(window.APP_LOG_MIGRATED_KEY, 'true');
 };
 
 window.registrarLogEvento = function(tipo, mensagem, dados = {}) {
     const timestamp = Number(dados.timestamp || dados.createdAt) || Date.now();
+    const deviceId = window.obterLogDeviceId();
     const evento = {
         id: 'log_' + timestamp + '_' + Math.random().toString(36).slice(2, 8),
         tipo,
@@ -121,21 +216,30 @@ window.registrarLogEvento = function(tipo, mensagem, dados = {}) {
         timestamp,
         dataIso: new Date(timestamp).toISOString(),
         dataLocal: new Date(timestamp).toLocaleString('pt-BR'),
+        deviceId,
+        runtime: window.isNativeRuntime() ? 'apk' : 'pwa',
         dados
     };
-    const log = [evento, ...window.obterLogEventos()].slice(0, 300);
-    window.salvarLogEventos(log);
-    window.renderizarLogDesenvolvedor();
+    window.mesclarLogEventos([evento]);
+    window.adicionarLogPendente(evento);
+
+    if (navigator.onLine && typeof window.firebasePushLog === 'function') {
+        Promise.resolve(window.firebasePushLog(evento))
+            .then(() => window.removerLogPendente(evento.id))
+            .catch(() => {});
+    }
+
     return evento;
 };
 
 window.registrarOperacaoBanco = function(tipo, mensagem, rede = {}, dados = {}) {
     if (typeof window.registrarLogEvento !== 'function') return null;
+    const redeId = (rede && rede.id) || dados.redeId || null;
     const payload = {
-        redeId: rede?.id || dados.redeId || null,
-        ssid: rede?.ssid || dados.ssid || null,
-        bssid: rede?.bssid || dados.bssid || null,
-        local: !!String(rede?.id || dados.redeId || '').startsWith('local_'),
+        redeId,
+        ssid: (rede && rede.ssid) || dados.ssid || null,
+        bssid: (rede && rede.bssid) || dados.bssid || null,
+        local: !!String(redeId || '').startsWith('local_'),
         online: navigator.onLine,
         ...dados
     };
@@ -172,17 +276,29 @@ window.renderizarLogDesenvolvedor = function() {
         const title = document.createElement('strong');
         title.textContent = evento.mensagem || evento.tipo || 'Evento';
         const meta = document.createElement('span');
-        meta.textContent = evento.dataLocal || new Date(evento.timestamp || Date.now()).toLocaleString('pt-BR');
+        const tipo = evento.tipo ? `${evento.tipo} - ` : '';
+        meta.textContent = tipo + (evento.dataLocal || new Date(evento.timestamp || Date.now()).toLocaleString('pt-BR'));
         item.appendChild(title);
         item.appendChild(meta);
         out.appendChild(item);
     });
 };
 
-window.limparLogDesenvolvedor = function() {
+window.limparLogDesenvolvedor = async function() {
     localStorage.removeItem(window.APP_LOG_KEY);
+    localStorage.removeItem(window.APP_LOG_PENDING_KEY);
     window.renderizarLogDesenvolvedor();
-    window.mostrarToast('Log limpo.');
+    if (navigator.onLine && typeof window.firebaseLimparLogs === 'function') {
+        try {
+            await window.firebaseLimparLogs();
+            window.mostrarToast('Log global limpo.');
+            return;
+        } catch (error) {
+            window.mostrarToast('Log local limpo. Falha ao limpar nuvem.');
+            return;
+        }
+    }
+    window.mostrarToast('Log local limpo.');
 };
 
 window.mostrarSobreApp = function() {
@@ -578,6 +694,7 @@ window.abrirModal = function() {
     window.novaRedeWifiSugerida = null;
     window.novaRedeConectarAposCadastro = false;
     document.getElementById('modalNovaRede').style.display = 'flex';
+    window.validarSenhaNovaModal();
 };
 
 window.fecharModal = function() { 
@@ -593,6 +710,24 @@ window.fecharModal = function() {
     window.novaRedeBssidSugerida = null;
     window.novaRedeWifiSugerida = null;
     window.novaRedeConectarAposCadastro = false;
+    const btnSalvar = document.getElementById('btnSalvarModal');
+    if (btnSalvar) {
+        btnSalvar.disabled = false;
+        btnSalvar.innerText = 'Salvar';
+        delete btnSalvar.dataset.saving;
+    }
+};
+
+window.validarSenhaNovaModal = function() {
+    const senhaInput = document.getElementById('novaSenha');
+    const btnSalvar = document.getElementById('btnSalvarModal');
+    if (!senhaInput || !btnSalvar) return true;
+
+    const senha = senhaInput.value.trim();
+    const senhaValida = senha.length >= 8;
+    senhaInput.setCustomValidity(senhaValida || senha.length === 0 ? '' : 'A senha precisa ter no minimo 8 caracteres.');
+    btnSalvar.disabled = !senhaValida;
+    return senhaValida;
 };
 
 window.filtrar = function() { 
@@ -812,7 +947,13 @@ window.sincronizarPendentes = async function() {
     let filaExclusao = JSON.parse(localStorage.getItem('wifi_pro_deletes_v1') || '[]');
     if (filaExclusao.length > 0) {
         filaExclusao.forEach(id => {
-            if(typeof window.firebaseExcluir === 'function') window.firebaseExcluir(id);
+            if(typeof window.firebaseExcluir === 'function') {
+                window.firebaseExcluir(id);
+                window.registrarOperacaoBanco('sync_exclusao_enviada', `Exclusao sincronizada: ${id}`, { id }, {
+                    redeId: id,
+                    origem: 'fila_offline'
+                });
+            }
         });
         localStorage.removeItem('wifi_pro_deletes_v1');
     }
@@ -825,7 +966,15 @@ window.sincronizarPendentes = async function() {
             if(up.lat !== undefined) { toUpdate.lat = up.lat; toUpdate.lng = up.lng; }
             if(up.ssid !== undefined) { toUpdate.ssid = up.ssid; toUpdate.senha = up.senha; }
             if(up.bssid !== undefined) { toUpdate.bssid = up.bssid; }
-            if(typeof window.firebaseAtualizarObjeto === 'function') window.firebaseAtualizarObjeto(id, toUpdate);
+            if(typeof window.firebaseAtualizarObjeto === 'function') {
+                window.firebaseAtualizarObjeto(id, toUpdate);
+                const redeAtualizada = window.redesEmMemoria.find(r => r.id === id) || { id, ...toUpdate };
+                window.registrarOperacaoBanco('sync_atualizacao_enviada', `Atualizacao sincronizada: ${redeAtualizada.ssid || id}`, redeAtualizada, {
+                    redeId: id,
+                    campos: Object.keys(toUpdate),
+                    origem: 'fila_offline'
+                });
+            }
         });
         localStorage.removeItem('wifi_pro_updates_v1');
     }
@@ -836,9 +985,19 @@ window.sincronizarPendentes = async function() {
         await window.atualizarBackupLocal(window.redesEmMemoria);
         pendentes.forEach(rede => {
             const meta = window.criarMetadadosCadastroRede(window.getRedeRecentTimestamp(rede) || Date.now());
-            window.firebasePush(rede.ssid, rede.senha, rede.lat, rede.lng, rede.bssid, {
+            const cloudId = window.firebasePush(rede.ssid, rede.senha, rede.lat, rede.lng, rede.bssid, {
                 ...meta,
                 createdAtLocal: rede.createdAtLocal || meta.createdAtLocal
+            });
+            window.registrarOperacaoBanco('sync_criacao_enviada', `Rede enviada para nuvem: ${rede.ssid}`, {
+                ...rede,
+                id: cloudId || rede.id
+            }, {
+                redeId: cloudId || rede.id,
+                redeLocalId: rede.id,
+                createdAt: meta.createdAt,
+                timestamp: Date.now(),
+                origem: 'fila_offline'
             });
         });
     }
@@ -847,6 +1006,7 @@ window.sincronizarPendentes = async function() {
 // EVENTOS BASE DO APLICATIVO
 window.addEventListener('online', () => {
     window.atualizarContador('sincronizando');
+    if (typeof window.sincronizarLogsPendentes === 'function') window.sincronizarLogsPendentes();
     if (typeof window.firebasePush === 'function') window.sincronizarPendentes();
 });
 
@@ -1331,6 +1491,11 @@ window.salvarRedeLocal = async function() {
     const s = document.getElementById('novoSSID').value.trim();
     const p = document.getElementById('novaSenha').value.trim();
     if(!s || !p) { window.mostrarToast("Preencha os campos!"); return; }
+    if(p.length < 8) {
+        window.validarSenhaNovaModal();
+        window.mostrarToast("A senha precisa ter no minimo 8 caracteres.");
+        return;
+    }
     
     const usarGeo = document.getElementById('checkLocalizacao').checked;
     const coordManual = document.getElementById('novaCoordenadaManual').value.trim();
@@ -1409,7 +1574,7 @@ window.salvarRedeLocal = async function() {
 
     const novaRede = { id: novoId, ssid: s, senha: p, lat, lng, bssid: bssid || null, ...metaCriacao };
     window.redesEmMemoria.push(novaRede);
-    window.registrarLogEvento('rede_adicionada', `Rede adicionada: ${s}`, {
+    window.registrarOperacaoBanco('rede_adicionada', `Rede adicionada: ${s}`, novaRede, {
         redeId: novoId,
         ssid: s,
         senha: p,
@@ -1451,7 +1616,8 @@ window.importarListaTexto = async function() {
                 if (p.length >= 8 && !window.redesEmMemoria.find(r => r.ssid === s)) {
                     const metaImportacao = window.criarMetadadosCadastroRede(Date.now() + adicionados);
                     window.redesEmMemoria.push({ id: 'local_' + metaImportacao.createdAt, ssid: s, senha: p, lat: null, lng: null, ...metaImportacao });
-                    window.registrarLogEvento('rede_adicionada', `Rede adicionada por importacao: ${s}`, {
+                    const redeImportada = { id: 'local_' + metaImportacao.createdAt, ssid: s, senha: p, lat: null, lng: null, ...metaImportacao };
+                    window.registrarOperacaoBanco('rede_adicionada', `Rede adicionada por importacao: ${s}`, redeImportada, {
                         redeId: 'local_' + metaImportacao.createdAt,
                         ssid: s,
                         senha: p,
@@ -1599,6 +1765,13 @@ window.aplicarRedesImportadas = async function(redes) {
                 mudou = true;
             }
             if (mudou) atualizados++;
+            if (mudou) {
+                window.registrarOperacaoBanco('rede_atualizada_importacao', `Rede atualizada por importacao: ${existente.ssid}`, existente, {
+                    bssid: bssid || null,
+                    lat: rede.lat ?? null,
+                    lng: rede.lng ?? null
+                });
+            }
             return;
         }
 
@@ -1613,7 +1786,12 @@ window.aplicarRedesImportadas = async function(redes) {
             lng: rede.lng ?? null,
             ...metaImportacao
         });
-        window.registrarLogEvento('rede_adicionada', `Rede adicionada por importacao: ${rede.ssid}`, {
+        window.registrarOperacaoBanco('rede_adicionada', `Rede adicionada por importacao: ${rede.ssid}`, {
+            id: redeIdImportada,
+            ssid: rede.ssid,
+            senha: rede.senha,
+            bssid: bssid || null
+        }, {
             redeId: redeIdImportada,
             ssid: rede.ssid,
             senha: rede.senha,
@@ -1645,6 +1823,14 @@ window.importarListaTexto = async function() {
     }
 
     const result = await window.aplicarRedesImportadas(redes);
+    const tipoImportacao = (result.adicionados > 0 || result.atualizados > 0)
+        ? 'importacao_concluida'
+        : 'importacao_sem_alteracoes';
+    window.registrarLogEvento(tipoImportacao, `Importacao finalizada: ${result.adicionados} adicionadas, ${result.atualizados} atualizadas`, {
+        adicionados: result.adicionados,
+        atualizados: result.atualizados,
+        reconhecidas: redes.length
+    });
     window.fecharModalAvancado();
     window.mostrarToast(`${result.adicionados} adicionadas, ${result.atualizados} atualizadas.`);
 };

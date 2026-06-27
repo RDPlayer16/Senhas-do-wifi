@@ -501,29 +501,10 @@ html[data-theme="light"] .list-shell {
     color: var(--text-muted);
 }
 
-.list-toolbar-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
 .small-add {
     width: auto;
     padding: 10px 12px;
     white-space: nowrap;
-}
-
-.radar-stop-inline {
-    display: none;
-    width: auto;
-    padding: 10px 12px;
-    white-space: nowrap;
-    background: var(--danger);
-    color: #fff;
-}
-
-.radar-stop-inline.show {
-    display: inline-flex;
 }
 
 .search-row {
@@ -1005,17 +986,7 @@ body:not(.developer-mode) .developer-entry {
         flex-direction: column;
     }
 
-    .list-toolbar-actions {
-        width: 100%;
-        display: grid;
-        grid-template-columns: 1fr;
-    }
-
     .small-add {
-        width: 100%;
-    }
-
-    .radar-stop-inline.show {
         width: 100%;
     }
 
