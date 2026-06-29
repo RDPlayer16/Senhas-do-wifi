@@ -1019,7 +1019,7 @@ window.atualizarDashboardLayout = function() {
             if (labelEl) labelEl.textContent = 'Resumo PWA';
             ssidEl.textContent = `${redes.length} redes salvas`;
             metaEl.textContent = 'Use o Radar por GPS ou cadastre uma nova rede manualmente.';
-            if (routerBtn) routerBtn.disabled = true;
+            if (routerBtn) routerBtn.disabled = false;
             if (saveBtn) saveBtn.disabled = true;
         } else if (current && current.connected && current.ssid) {
             if (labelEl) labelEl.textContent = 'Rede Atual';
