@@ -6,6 +6,7 @@ window.iniciarFirebaseSeguro = async function() {
         const config = {
             apiKey: "AIzaSyCqDSP5SAZdMrHYvyeq9z9lZDp3UTcKu7Y",
             authDomain: "wifi-manager-pro-44487.firebaseapp.com",
+            databaseURL: "https://wifi-manager-pro-44487-default-rtdb.firebaseio.com",
             projectId: "wifi-manager-pro-44487",
             storageBucket: "wifi-manager-pro-44487.firebasestorage.app",
             messagingSenderId: "653885032085",
