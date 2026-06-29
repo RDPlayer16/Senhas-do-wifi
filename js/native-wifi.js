@@ -80,6 +80,25 @@
         return candidatos.length > 1 && !temMatchExatoBssid(network, candidatos);
     }
 
+    function correspondeConexaoAtual(networkOrRede) {
+        const connection = window.wifiAtualConexao;
+        if (!connection || !connection.connected || !connection.ssid) return false;
+
+        const ssid = getNetworkSsid(networkOrRede);
+        if (!mesmoSsid(ssid, connection.ssid)) return false;
+
+        const connectionBssid = normalizarBssid(connection.bssid);
+        const targetBssid = getNetworkBssid(networkOrRede) || getRedeBssid(networkOrRede);
+        if (connectionBssid && targetBssid) return connectionBssid === targetBssid;
+
+        return true;
+    }
+
+    function rotuloAcaoRedeSalva(network, candidatos) {
+        if (correspondeConexaoAtual(network)) return 'Abrir Wi-Fi';
+        return deveEscolherRede(network, candidatos) ? 'Escolher' : 'Adicionar';
+    }
+
     function ordenarRedesWifi(networks) {
         return [...networks].sort((left, right) => {
             const leftSaved = findRedeSalva(left) ? 1 : 0;
@@ -220,10 +239,16 @@
         const button = document.createElement('button');
         button.className = 'btn-mini wifi-action-primary';
         button.type = 'button';
-        button.textContent = deveEscolherRede(network, candidatos) ? 'Escolher' : 'Conectar';
+        button.textContent = rotuloAcaoRedeSalva(network, candidatos);
         button.addEventListener('click', async () => {
+            if (correspondeConexaoAtual(network)) {
+                const redeAtual = candidatos[0] || { ssid: network.ssid, senha: '', bssid: network.bssid || '' };
+                await window.conectarRedeWifiReal(redeAtual, network, button, { forceSwitch: true });
+                return;
+            }
+
             const rede = await escolherRedeParaNetwork(network, candidatos);
-            if (rede) window.conectarRedeWifiReal(rede, network, button, { forceSwitch: true });
+            if (rede) await window.adicionarRedeNoCelular(rede, network, button);
         });
         return button;
     }
@@ -446,6 +471,17 @@
         if (typeof window.atualizarBackupLocal === 'function') {
             await window.atualizarBackupLocal(window.redesEmMemoria);
         }
+        if (typeof window.registrarOperacaoBanco === 'function') {
+            const redeAtualizada = (window.redesEmMemoria || []).find(item => item.id === id) || rede;
+            const tipo = patch.bssid !== undefined ? 'bssid_associado' : 'rede_atualizada';
+            const mensagem = patch.bssid !== undefined
+                ? `BSSID associado: ${redeAtualizada.ssid}`
+                : `Rede atualizada: ${redeAtualizada.ssid}`;
+            window.registrarOperacaoBanco(tipo, mensagem, redeAtualizada, {
+                campos: Object.keys(patch || {}),
+                patch
+            });
+        }
         if (!window.mostrandoApenasProximas && typeof window.renderizarInterface === 'function') {
             window.renderizarInterface(window.redesEmMemoria);
         }
@@ -561,12 +597,12 @@
         if (!candidatos.length) return;
 
         const sinal = formatarSinal(melhor.level).toLowerCase();
-        const ok = confirm(`Rede salva proxima encontrada:\n\n${melhor.ssid} (${sinal})\n\nDeseja conectar agora?`);
+        const ok = confirm(`Rede salva proxima encontrada:\n\n${melhor.ssid} (${sinal})\n\nDeseja adicionar ao celular agora?`);
         if (!ok) return;
 
         const rede = await escolherRedeParaNetwork(melhor, candidatos);
         if (rede) {
-            await window.conectarRedeWifiReal(rede, melhor, null, { forceSwitch: true });
+            await window.adicionarRedeNoCelular(rede, melhor, null);
         }
     }
 
@@ -749,6 +785,22 @@
         await executarScanWifiReal({ manual: true });
     };
 
+    async function abrirWifiDepoisDeAdicionar(plugin, rede, result) {
+        if (!plugin || typeof plugin.openWifiSettings !== 'function') return;
+
+        const operacaoCancelada = result && result.method === 'ACTION_WIFI_ADD_NETWORKS' && result.saved === false;
+        if (operacaoCancelada) return;
+
+        try {
+            await plugin.openWifiSettings({ ssid: rede && rede.ssid ? rede.ssid : '' });
+        } catch (error) {
+            console.warn('Rede adicionada, mas nao foi possivel abrir o Wi-Fi do Android.', error);
+            if (typeof window.mostrarToast === 'function') {
+                window.mostrarToast('Rede adicionada. Abra o Wi-Fi do Android para trocar.');
+            }
+        }
+    }
+
     window.adicionarRedeNoCelular = async function(rede, network, button) {
         const plugin = getWifiPlugin();
         if (!plugin || typeof plugin.saveNetwork !== 'function') {
@@ -785,6 +837,9 @@
             } else {
                 window.mostrarToast('Solicitacao enviada ao Android.');
             }
+
+            if (button) button.textContent = 'Abrindo Wi-Fi...';
+            await abrirWifiDepoisDeAdicionar(plugin, rede, result);
         } catch (error) {
             const msg = error && error.message ? error.message : 'Falha ao adicionar rede no celular.';
             window.mostrarToast(msg);
@@ -794,6 +849,29 @@
                 button.textContent = originalText || 'Adicionar ao celular';
             }
         }
+    };
+
+    window.isRedeWifiAtual = function(networkOrRede) {
+        return correspondeConexaoAtual(networkOrRede);
+    };
+
+    window.obterRotuloAcaoRedeSalvaAndroid = function(networkOrRede, candidatos = null) {
+        const lista = Array.isArray(candidatos) ? candidatos : redesSalvasCompativeis(networkOrRede);
+        return rotuloAcaoRedeSalva(networkOrRede, lista);
+    };
+
+    window.acionarRedeSalvaNoAndroid = async function(rede, network, button) {
+        const alvo = network || {
+            ssid: rede && rede.ssid,
+            bssid: rede && rede.bssid,
+            capabilities: rede && rede.senha ? '[WPA2-PSK]' : ''
+        };
+
+        if (correspondeConexaoAtual(alvo)) {
+            return window.conectarRedeWifiReal(rede, alvo, button, { forceSwitch: true });
+        }
+
+        return window.adicionarRedeNoCelular(rede, alvo, button);
     };
 
     window.conectarRedeWifiReal = async function(rede, network, button, options = {}) {
@@ -824,9 +902,8 @@
                 try {
                     result = await plugin.switchNetwork(payload);
                 } catch (switchError) {
-                    console.warn('Troca direta falhou. Tentando fluxo de salvar/sugerir.', switchError);
-                    if (options.onlySwitch) throw switchError;
-                    result = await plugin.connectNetwork(payload);
+                    console.warn('Nao foi possivel abrir a troca pelo Android.', switchError);
+                    throw switchError;
                 }
             } else {
                 result = await plugin.connectNetwork(payload);
@@ -840,8 +917,10 @@
                 }
             }
 
-            if (result && result.method === 'WifiNetworkSpecifier') {
-                window.mostrarToast('Troca de rede solicitada ao Android.');
+            if (result && (result.method === 'ACTION_WIFI_PANEL' || result.method === 'ACTION_WIFI_SETTINGS')) {
+                window.mostrarToast('Selecione a rede salva na tela Wi-Fi do Android.');
+            } else if (result && result.method === 'WifiNetworkSuggestionSwitch') {
+                window.mostrarToast('Troca normal solicitada ao Android.');
             } else if (result && result.method === 'ACTION_WIFI_ADD_NETWORKS') {
                 window.mostrarToast(result.saved ? 'Rede aprovada no Android.' : 'Operacao cancelada no Android.');
             } else if (result && result.suggested) {
@@ -859,7 +938,7 @@
         } finally {
             if (button) {
                 button.disabled = false;
-                button.textContent = originalText || 'Conectar';
+                button.textContent = originalText || 'Abrir Wi-Fi';
             }
         }
     };

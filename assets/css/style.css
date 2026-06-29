@@ -501,10 +501,29 @@ html[data-theme="light"] .list-shell {
     color: var(--text-muted);
 }
 
+.list-toolbar-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
 .small-add {
     width: auto;
     padding: 10px 12px;
     white-space: nowrap;
+}
+
+.radar-stop-inline {
+    display: none;
+    width: auto;
+    padding: 10px 12px;
+    white-space: nowrap;
+    background: var(--danger);
+    color: #fff;
+}
+
+.radar-stop-inline.show {
+    display: inline-flex;
 }
 
 .search-row {
@@ -804,6 +823,51 @@ html[data-theme="light"] .bottom-bar {
     padding: 10px;
 }
 
+.router-modal {
+    max-width: 430px;
+}
+
+.router-helper {
+    color: var(--text-muted);
+    font-size: 13px;
+    line-height: 1.45;
+    margin: 4px 0 12px;
+}
+
+.router-grid {
+    display: grid;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.router-grid button {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-2);
+    color: var(--text-main);
+    padding: 12px;
+    text-align: left;
+}
+
+.router-grid button span {
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.router-custom {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+}
+
+.router-custom input {
+    min-width: 0;
+}
+
 .settings-modal {
     max-width: 460px;
 }
@@ -836,52 +900,6 @@ html[data-theme="light"] .bottom-bar {
     height: 22px;
 }
 
-.router-modal {
-    max-width: 460px;
-}
-
-.router-helper {
-    margin: 0;
-    color: var(--text-muted);
-    font-size: 13px;
-    line-height: 1.4;
-}
-
-.router-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 10px;
-}
-
-.router-grid button {
-    min-height: 72px;
-    display: grid;
-    align-content: center;
-    gap: 5px;
-    padding: 12px;
-    border-radius: 8px;
-    border: 1px solid var(--border);
-    background: var(--surface-2);
-    color: var(--text-main);
-    text-align: left;
-}
-
-.router-grid button strong,
-.router-grid button span {
-    display: block;
-}
-
-.router-grid button span {
-    color: var(--accent);
-    font-size: 13px;
-}
-
-.router-custom {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) 96px;
-    gap: 8px;
-}
-
 .developer-log {
     display: grid;
     gap: 8px;
@@ -893,6 +911,70 @@ html[data-theme="light"] .bottom-bar {
     background: var(--surface-2);
     color: var(--text-muted);
     font-size: 12px;
+}
+
+.developer-modal {
+    max-width: 560px;
+}
+
+.developer-tabs {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding: 4px 0 10px;
+    margin-bottom: 8px;
+}
+
+.developer-tabs button {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 86px;
+    padding: 9px 10px;
+    border-radius: 8px;
+    background: var(--surface-2);
+    color: var(--text-muted);
+    border: 1px solid var(--border);
+    font-size: 12px;
+}
+
+.developer-tabs button.active {
+    background: var(--accent);
+    color: #fff;
+    border-color: var(--accent);
+}
+
+.developer-panel {
+    display: none;
+    gap: 10px;
+}
+
+.developer-panel.active {
+    display: grid;
+}
+
+.developer-hint {
+    color: var(--text-muted);
+    background: var(--surface-2);
+    border: 1px dashed var(--border);
+    border-radius: 8px;
+    padding: 9px 10px;
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.developer-log-item.danger {
+    border-color: rgba(239, 68, 68, 0.55);
+    background: rgba(239, 68, 68, 0.1);
+}
+
+.developer-log-item.warning {
+    border-color: rgba(245, 158, 11, 0.55);
+    background: rgba(245, 158, 11, 0.1);
+}
+
+.developer-log-item.success {
+    border-color: rgba(16, 185, 129, 0.55);
+    background: rgba(16, 185, 129, 0.1);
 }
 
 .developer-log-item {
@@ -912,6 +994,88 @@ html[data-theme="light"] .bottom-bar {
 
 .developer-log-item span {
     color: var(--text-muted);
+}
+
+.duplicate-manager-modal {
+    max-width: 720px;
+    width: 95%;
+    height: 85vh;
+}
+
+.duplicate-manager-list {
+    display: grid;
+    gap: 10px;
+    overflow-y: auto;
+    min-height: 260px;
+    padding-right: 2px;
+}
+
+.duplicate-group {
+    display: grid;
+    gap: 8px;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--surface-2);
+}
+
+.duplicate-group-title {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    align-items: center;
+    color: var(--text-main);
+    font-weight: 800;
+}
+
+.duplicate-count-pill {
+    flex: 0 0 auto;
+    color: #fff;
+    background: var(--accent);
+    border-radius: 999px;
+    padding: 4px 8px;
+    font-size: 11px;
+}
+
+.duplicate-network-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    align-items: center;
+    padding: 9px;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: var(--surface);
+}
+
+.duplicate-network-info {
+    display: grid;
+    gap: 3px;
+    min-width: 0;
+}
+
+.duplicate-network-info strong,
+.duplicate-network-info span {
+    overflow-wrap: anywhere;
+}
+
+.duplicate-network-info strong {
+    color: var(--text-main);
+    font-size: 13px;
+}
+
+.duplicate-network-info span {
+    color: var(--text-muted);
+    font-size: 12px;
+}
+
+.duplicate-network-row button {
+    width: auto;
+    min-width: 74px;
+    padding: 9px 10px;
+    border-radius: 8px;
+    background: var(--danger);
+    color: #fff;
 }
 
 .segmented-control {
@@ -986,13 +1150,18 @@ body:not(.developer-mode) .developer-entry {
         flex-direction: column;
     }
 
+    .list-toolbar-actions {
+        width: 100%;
+        display: grid;
+        grid-template-columns: 1fr;
+    }
+
     .small-add {
         width: 100%;
     }
 
-    .router-grid,
-    .router-custom {
-        grid-template-columns: 1fr;
+    .radar-stop-inline.show {
+        width: 100%;
     }
 
     .segmented-control {

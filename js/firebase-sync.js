@@ -12,6 +12,38 @@ window.iniciarFirebaseSeguro = async function() {
 
     const databaseURL = config.databaseURL.replace(/\/+$/, "");
     let restReadInProgress = false;
+    window.firebaseSyncState = window.firebaseSyncState || {
+        mode: "inicializando",
+        databaseURL,
+        lastSyncAt: null,
+        lastOrigin: null,
+        lastTotal: null,
+        lastError: null
+    };
+
+    function atualizarEstadoFirebaseSync(patch = {}) {
+        window.firebaseSyncState = {
+            ...(window.firebaseSyncState || {}),
+            databaseURL,
+            ...patch
+        };
+        try {
+            localStorage.setItem("wifi_pro_firebase_sync_state_v1", JSON.stringify(window.firebaseSyncState));
+        } catch (error) {}
+        return window.firebaseSyncState;
+    }
+
+    window.getFirebaseDiagnosticState = function() {
+        try {
+            return {
+                ...(JSON.parse(localStorage.getItem("wifi_pro_firebase_sync_state_v1") || "{}")),
+                ...(window.firebaseSyncState || {}),
+                databaseURL
+            };
+        } catch (error) {
+            return { ...(window.firebaseSyncState || {}), databaseURL };
+        }
+    };
 
     function limparIdFirebase(id) {
         return String(id || "").replace(/[.#$\/\[\]]/g, "_");
@@ -22,7 +54,12 @@ window.iniciarFirebaseSeguro = async function() {
     }
 
     function restUrl(path) {
-        return `${databaseURL}/${String(path || "").replace(/^\/+/, "")}.json`;
+        const cleanPath = String(path || "").replace(/^\/+/, "");
+        const queryIndex = cleanPath.indexOf("?");
+        if (queryIndex !== -1) {
+            return `${databaseURL}/${cleanPath.slice(0, queryIndex)}.json${cleanPath.slice(queryIndex)}`;
+        }
+        return `${databaseURL}/${cleanPath}.json`;
     }
 
     async function firebaseRestRequest(path, options = {}) {
@@ -117,6 +154,13 @@ window.iniciarFirebaseSeguro = async function() {
         if (typeof window.atualizarContador === "function") {
             window.atualizarContador("sincronizado", listaNuvem.length);
         }
+        atualizarEstadoFirebaseSync({
+            mode: origem === "sdk" ? "sdk" : "rest",
+            lastSyncAt: Date.now(),
+            lastOrigin: origem,
+            lastTotal: listaNuvem.length,
+            lastError: null
+        });
         return listaNuvem;
     }
 
@@ -130,6 +174,7 @@ window.iniciarFirebaseSeguro = async function() {
                 lat,
                 lng,
                 bssid: bssid || null,
+                logicalId: meta.logicalId || null,
                 createdAt,
                 createdAtIso: meta.createdAtIso || new Date(createdAt).toISOString(),
                 createdAtLocal: meta.createdAtLocal || new Date(createdAt).toLocaleString("pt-BR")
@@ -142,6 +187,8 @@ window.iniciarFirebaseSeguro = async function() {
             });
             return id;
         };
+
+        atualizarEstadoFirebaseSync({ mode: "rest" });
 
         window.firebaseExcluir = function(id) {
             return firebaseRestRequest(`redes_wifi/${limparIdFirebase(id)}`, { method: "DELETE" })
@@ -199,6 +246,10 @@ window.iniciarFirebaseSeguro = async function() {
             return true;
         } catch (error) {
             console.warn("Firebase REST: falha ao carregar banco.", error);
+            atualizarEstadoFirebaseSync({
+                mode: "rest",
+                lastError: error.message || String(error)
+            });
             if (typeof window.registrarLogEvento === "function") {
                 window.registrarLogEvento("sync_erro", "Falha ao sincronizar pelo Firebase REST", {
                     erro: error.message || String(error),
@@ -214,6 +265,49 @@ window.iniciarFirebaseSeguro = async function() {
         }
     };
 
+    window.executarDiagnosticoFirebase = async function() {
+        const resultado = {
+            ok: false,
+            read: false,
+            write: false,
+            delete: false,
+            mode: (window.firebaseSyncState && window.firebaseSyncState.mode) || "indefinido",
+            testedAt: Date.now(),
+            error: null
+        };
+        const id = "diagnostico_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
+        try {
+            await firebaseRestRequest("redes_wifi?shallow=true");
+            resultado.read = true;
+            await firebaseRestRequest(`app_logs/${id}`, {
+                method: "PUT",
+                body: JSON.stringify({
+                    id,
+                    tipo: "diagnostico",
+                    mensagem: "Teste temporario de escrita Firebase",
+                    timestamp: resultado.testedAt
+                })
+            });
+            resultado.write = true;
+            await firebaseRestRequest(`app_logs/${id}`, { method: "DELETE" });
+            resultado.delete = true;
+            resultado.ok = resultado.read && resultado.write && resultado.delete;
+            atualizarEstadoFirebaseSync({
+                lastDiagnosticAt: resultado.testedAt,
+                lastDiagnosticOk: resultado.ok,
+                lastError: null
+            });
+        } catch (error) {
+            resultado.error = error.message || String(error);
+            atualizarEstadoFirebaseSync({
+                lastDiagnosticAt: resultado.testedAt,
+                lastDiagnosticOk: false,
+                lastError: resultado.error
+            });
+        }
+        return resultado;
+    };
+
     window.instalarFirebaseRestFallback();
 
     try {
@@ -222,6 +316,7 @@ window.iniciarFirebaseSeguro = async function() {
 
         const app = initializeApp(config);
         const db = getDatabase(app, config.databaseURL);
+        atualizarEstadoFirebaseSync({ mode: "sdk" });
         const redesRef = ref(db, "redes_wifi");
         const logsRef = ref(db, "app_logs");
         const logsQuery = query(logsRef, orderByChild("timestamp"), limitToLast(300));
@@ -235,6 +330,7 @@ window.iniciarFirebaseSeguro = async function() {
                 lat,
                 lng,
                 bssid: bssid || null,
+                logicalId: meta.logicalId || null,
                 createdAt,
                 createdAtIso: meta.createdAtIso || new Date(createdAt).toISOString(),
                 createdAtLocal: meta.createdAtLocal || new Date(createdAt).toLocaleString("pt-BR")
@@ -247,30 +343,30 @@ window.iniciarFirebaseSeguro = async function() {
         };
 
         window.firebaseExcluir = function(id) {
-            remove(ref(db, "redes_wifi/" + id)).catch(() => {
+            return remove(ref(db, "redes_wifi/" + id)).catch(() => {
                 window.instalarFirebaseRestFallback();
-                window.firebaseExcluir(id);
+                return window.firebaseExcluir(id);
             });
         };
 
         window.firebaseAtualizar = function(id, lat, lng) {
-            update(ref(db, "redes_wifi/" + id), { lat, lng }).catch(() => {
+            return update(ref(db, "redes_wifi/" + id), { lat, lng }).catch(() => {
                 window.instalarFirebaseRestFallback();
-                window.firebaseAtualizar(id, lat, lng);
+                return window.firebaseAtualizar(id, lat, lng);
             });
         };
 
         window.firebaseEditarCredenciais = function(id, ssid, senha) {
-            update(ref(db, "redes_wifi/" + id), { ssid, senha }).catch(() => {
+            return update(ref(db, "redes_wifi/" + id), { ssid, senha }).catch(() => {
                 window.instalarFirebaseRestFallback();
-                window.firebaseEditarCredenciais(id, ssid, senha);
+                return window.firebaseEditarCredenciais(id, ssid, senha);
             });
         };
 
         window.firebaseAtualizarObjeto = function(id, obj) {
-            update(ref(db, "redes_wifi/" + id), obj).catch(() => {
+            return update(ref(db, "redes_wifi/" + id), obj).catch(() => {
                 window.instalarFirebaseRestFallback();
-                window.firebaseAtualizarObjeto(id, obj);
+                return window.firebaseAtualizarObjeto(id, obj);
             });
         };
 

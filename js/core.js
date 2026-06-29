@@ -1,10 +1,11 @@
-// VARIÁVEIS GLOBAIS DE ESTADO
+﻿// VARIÃVEIS GLOBAIS DE ESTADO
 window.DB_KEY = 'wifi_pro_db_v9';
 window.DB_GEO_KEY = 'wifi_pro_db_geo_v1';
 window.APP_LOG_KEY = 'wifi_pro_event_log_v1';
 window.APP_LOG_PENDING_KEY = 'wifi_pro_event_log_pending_v1';
 window.APP_LOG_DEVICE_KEY = 'wifi_pro_event_log_device_v1';
 window.APP_LOG_MIGRATED_KEY = 'wifi_pro_event_log_migrated_v1';
+window.MAINTENANCE_BACKUP_KEY = 'wifi_pro_maintenance_backup_v1';
 window.APP_LOG_LIMIT = 300;
 window.redesEmMemoria = [];
 window.mostrandoApenasProximas = false;
@@ -20,7 +21,8 @@ window.scanTarget = 'novo';
 window.appCurrentView = localStorage.getItem('wifi_pro_view_screen_v1') || 'home';
 window.appCurrentFilter = localStorage.getItem('wifi_pro_filter_v1') || 'all';
 if (!['all', 'recent'].includes(window.appCurrentFilter)) window.appCurrentFilter = 'all';
-window.appThemeMode = localStorage.getItem('wifi_pro_theme_v1') || 'dark';
+const storedThemeMode = localStorage.getItem('wifi_pro_theme_v1');
+window.appThemeMode = ['dark', 'light', 'auto'].includes(storedThemeMode) ? storedThemeMode : 'auto';
 window.appDeveloperMode = localStorage.getItem('wifi_pro_developer_v1') === 'true';
 
 window.isNativeRuntime = function() {
@@ -41,12 +43,22 @@ window.normalizarRedeTexto = function(value) {
     return String(value || '').trim().toLowerCase();
 };
 
+window.hashTextoSimples = function(value) {
+    const texto = String(value || '');
+    let hash = 0;
+    for (let i = 0; i < texto.length; i++) {
+        hash = ((hash << 5) - hash + texto.charCodeAt(i)) | 0;
+    }
+    return Math.abs(hash).toString(36);
+};
+
 window.deduplicarListaRedes = function(lista) {
     const resultado = [];
     const vistosPorId = new Map();
 
     (Array.isArray(lista) ? lista : []).forEach((rede) => {
         if (!rede) return;
+        window.aplicarIdLogicoRede(rede);
         const id = String(rede.id || '').trim();
         if (id) {
             if (vistosPorId.has(id)) {
@@ -84,6 +96,487 @@ window.deduplicarRedesMemoria = function() {
     return window.redesEmMemoria;
 };
 
+window.normalizarCoordenadaDuplicata = function(value) {
+    if (value === null || value === undefined || value === '') return '';
+    const numero = Number(String(value).replace(',', '.'));
+    return Number.isFinite(numero) ? numero.toFixed(6) : '';
+};
+
+window.obterAssinaturaDuplicataRede = function(rede) {
+    const bssid = typeof window.normalizarWifiBssid === 'function'
+        ? window.normalizarWifiBssid(rede?.bssid)
+        : window.normalizarRedeTexto(rede?.bssid);
+    return [
+        window.normalizarRedeTexto(rede?.ssid),
+        String(rede?.senha || ''),
+        bssid || '',
+        window.normalizarCoordenadaDuplicata(rede?.lat),
+        window.normalizarCoordenadaDuplicata(rede?.lng)
+    ].join('||');
+};
+
+window.obterIdLogicoRede = function(rede) {
+    return 'wifi_sig_' + window.hashTextoSimples(window.obterAssinaturaDuplicataRede(rede));
+};
+
+window.aplicarIdLogicoRede = function(rede) {
+    if (!rede) return rede;
+    rede.logicalId = rede.logicalId || window.obterIdLogicoRede(rede);
+    return rede;
+};
+
+window.criarBackupManutencao = async function(operacao = 'manual', meta = {}) {
+    const timestamp = Date.now();
+    const backup = {
+        tipo: 'wifi_manager_backup_manutencao',
+        versao: '2.2',
+        operacao,
+        createdAt: timestamp,
+        createdAtIso: new Date(timestamp).toISOString(),
+        createdAtLocal: new Date(timestamp).toLocaleString('pt-BR'),
+        totalRedes: (window.redesEmMemoria || []).length,
+        redes: (window.redesEmMemoria || []).map(rede => ({ ...window.aplicarIdLogicoRede({ ...rede }) })),
+        meta
+    };
+    localStorage.setItem(window.MAINTENANCE_BACKUP_KEY, JSON.stringify(backup));
+    window.renderizarBackupManutencao();
+    if (typeof window.registrarLogEvento === 'function') {
+        window.registrarLogEvento('backup_manutencao_criado', `Backup de manutencao criado: ${operacao}`, {
+            operacao,
+            totalRedes: backup.totalRedes,
+            timestamp
+        });
+    }
+    return backup;
+};
+
+window.obterUltimoBackupManutencao = function() {
+    try {
+        return JSON.parse(localStorage.getItem(window.MAINTENANCE_BACKUP_KEY) || 'null');
+    } catch (error) {
+        return null;
+    }
+};
+
+window.renderizarBackupManutencao = function() {
+    const out = document.getElementById('maintenanceBackupOutput');
+    if (!out) return;
+    const backup = window.obterUltimoBackupManutencao();
+    if (!backup) {
+        out.innerHTML = '<div class="developer-log-item"><strong>Nenhum backup criado.</strong><span>Use o botao acima ou rode uma manutencao/importacao.</span></div>';
+        return;
+    }
+    out.innerHTML = `<div class="developer-log-item success"><strong>Backup disponivel</strong><span>${backup.totalRedes || 0} rede(s) - ${backup.createdAtLocal || ''}</span><span>Operacao: ${backup.operacao || 'manual'}</span></div>`;
+};
+
+window.exportarUltimoBackupManutencao = async function() {
+    const backup = window.obterUltimoBackupManutencao();
+    if (!backup) {
+        window.mostrarToast('Nenhum backup de manutencao para exportar.');
+        return;
+    }
+    const texto = JSON.stringify(backup, null, 2);
+    if (typeof window.salvarArquivoExportado === 'function') {
+        await window.salvarArquivoExportado(
+            `Backup_Manutencao_${backup.createdAt || Date.now()}.json`,
+            'application/json',
+            window.textoParaBase64Utf8 ? window.textoParaBase64Utf8(texto) : btoa(unescape(encodeURIComponent(texto))),
+            texto
+        );
+    } else {
+        window.baixarArquivoWeb(`Backup_Manutencao_${backup.createdAt || Date.now()}.json`, 'application/json', texto);
+    }
+};
+
+window.escolherRedeDuplicadaParaManter = function(grupo) {
+    return [...grupo].sort((a, b) => {
+        const aLocal = String(a.id || '').startsWith('local_') ? 1 : 0;
+        const bLocal = String(b.id || '').startsWith('local_') ? 1 : 0;
+        if (aLocal !== bLocal) return aLocal - bLocal;
+
+        const aCreated = Number(a.createdAt) || Number.MAX_SAFE_INTEGER;
+        const bCreated = Number(b.createdAt) || Number.MAX_SAFE_INTEGER;
+        if (aCreated !== bCreated) return aCreated - bCreated;
+
+        return String(a.id || '').localeCompare(String(b.id || ''));
+    })[0];
+};
+
+window.obterGruposDuplicadosBanco = function() {
+    const grupos = new Map();
+    (Array.isArray(window.redesEmMemoria) ? window.redesEmMemoria : []).forEach((rede) => {
+        if (!rede || !rede.ssid) return;
+        const assinatura = window.obterAssinaturaDuplicataRede(rede);
+        if (!assinatura || assinatura.startsWith('||||')) return;
+        if (!grupos.has(assinatura)) grupos.set(assinatura, []);
+        grupos.get(assinatura).push(rede);
+    });
+
+    return Array.from(grupos.entries())
+        .filter(([, redes]) => redes.length > 1)
+        .map(([assinatura, redes]) => {
+            const manter = window.escolherRedeDuplicadaParaManter(redes);
+            return {
+                assinatura,
+                manter,
+                remover: redes.filter(rede => rede !== manter),
+                redes
+            };
+        })
+        .sort((a, b) => b.remover.length - a.remover.length);
+};
+
+window.obterPossiveisDuplicatasBanco = function() {
+    const grupos = new Map();
+    (Array.isArray(window.redesEmMemoria) ? window.redesEmMemoria : []).forEach((rede) => {
+        if (!rede || !rede.ssid) return;
+        const ssid = window.normalizarRedeTexto(rede.ssid);
+        if (!ssid) return;
+        if (!grupos.has(ssid)) grupos.set(ssid, []);
+        grupos.get(ssid).push(rede);
+    });
+
+    return Array.from(grupos.values())
+        .filter(redes => redes.length > 1)
+        .map(redes => ({
+            ssid: redes[0]?.ssid || 'Rede sem nome',
+            redes: [...redes].sort((a, b) => {
+                const senhaCompare = String(a.senha || '').localeCompare(String(b.senha || ''));
+                if (senhaCompare !== 0) return senhaCompare;
+                const bssidCompare = String(a.bssid || '').localeCompare(String(b.bssid || ''));
+                if (bssidCompare !== 0) return bssidCompare;
+                return String(a.id || '').localeCompare(String(b.id || ''));
+            })
+        }))
+        .filter(grupo => {
+            const assinaturas = new Set(grupo.redes.map(rede => window.obterAssinaturaDuplicataRede(rede)));
+            return assinaturas.size > 1;
+        })
+        .sort((a, b) => String(a.ssid || '').localeCompare(String(b.ssid || ''), 'pt-BR', { sensitivity: 'base' }));
+};
+
+window.obterResumoDuplicatasBanco = function() {
+    const exatas = window.obterGruposDuplicadosBanco();
+    const possiveis = window.obterPossiveisDuplicatasBanco();
+    return {
+        gruposExatos: exatas.length,
+        duplicatasExatas: exatas.reduce((total, grupo) => total + grupo.remover.length, 0),
+        gruposPossiveis: possiveis.length,
+        redesPossiveis: possiveis.reduce((total, grupo) => total + grupo.redes.length, 0)
+    };
+};
+
+window.renderizarDuplicatasBanco = function(grupos = window.obterGruposDuplicadosBanco()) {
+    const out = document.getElementById('duplicateCleanupOutput');
+    if (!out) return grupos;
+
+    const totalRemover = grupos.reduce((total, grupo) => total + grupo.remover.length, 0);
+    if (!grupos.length) {
+        out.innerHTML = '<div class="developer-log-item"><strong>Nenhuma duplicata exata encontrada.</strong><span>O banco local sincronizado nao tem redes com mesmo SSID, senha, BSSID e coordenadas.</span></div>';
+        return grupos;
+    }
+
+    out.innerHTML = '';
+    const resumo = document.createElement('div');
+    resumo.className = 'developer-log-item';
+    resumo.innerHTML = `<strong>${totalRemover} duplicata(s) em ${grupos.length} grupo(s)</strong><span>Uma copia sera mantida por grupo. Revise abaixo antes de remover.</span>`;
+    out.appendChild(resumo);
+
+    grupos.slice(0, 30).forEach((grupo) => {
+        const item = document.createElement('div');
+        item.className = 'developer-log-item warning';
+        const ssid = grupo.manter?.ssid || 'Rede sem nome';
+        const idsRemover = grupo.remover.map(rede => rede.id).join(', ');
+        const coords = [
+            window.normalizarCoordenadaDuplicata(grupo.manter?.lat),
+            window.normalizarCoordenadaDuplicata(grupo.manter?.lng)
+        ].filter(Boolean).join(', ');
+        item.innerHTML = `<strong>${ssid}</strong><span>Manter: ${grupo.manter?.id || 'sem id'}</span><span>Remover: ${idsRemover}</span><span>Senha: ${grupo.manter?.senha || 'vazia'} | BSSID: ${grupo.manter?.bssid || 'sem BSSID'}</span><span>${coords ? `Coordenadas: ${coords}` : 'Sem coordenadas salvas'}</span><span>ID logico: ${window.obterIdLogicoRede(grupo.manter)}</span>`;
+        out.appendChild(item);
+    });
+
+    if (grupos.length > 30) {
+        const extra = document.createElement('div');
+        extra.className = 'developer-log-item';
+        extra.innerHTML = `<strong>Mais ${grupos.length - 30} grupo(s)</strong><span>A limpeza tambem considera os grupos nao exibidos aqui.</span>`;
+        out.appendChild(extra);
+    }
+
+    return grupos;
+};
+
+window.analisarDuplicatasBanco = function() {
+    const grupos = window.renderizarDuplicatasBanco();
+    const totalRemover = grupos.reduce((total, grupo) => total + grupo.remover.length, 0);
+    window.mostrarToast(totalRemover ? `${totalRemover} duplicata(s) encontrada(s).` : 'Nenhuma duplicata exata encontrada.');
+    return grupos;
+};
+
+window.renderizarPossiveisDuplicatasBanco = function(grupos = window.obterPossiveisDuplicatasBanco()) {
+    const out = document.getElementById('possibleDuplicateOutput');
+    if (!out) return grupos;
+    const resumoDuplicatas = window.obterResumoDuplicatasBanco();
+    if (!grupos.length) {
+        out.innerHTML = `<div class="developer-log-item success"><strong>Nenhuma possivel duplicata encontrada.</strong><span>Duplicatas exatas detectadas: ${resumoDuplicatas.duplicatasExatas}</span><span>Nao ha SSIDs repetidos com senha, BSSID ou coordenadas diferentes.</span></div>`;
+        return grupos;
+    }
+    out.innerHTML = '';
+    const resumo = document.createElement('div');
+    resumo.className = 'developer-log-item warning';
+    resumo.innerHTML = `<strong>${grupos.length} SSID(s) repetido(s)</strong><span>Duplicatas exatas detectadas: ${resumoDuplicatas.duplicatasExatas}</span><span>Abra o gerenciamento para excluir manualmente. A lista esta em ordem alfabetica.</span>`;
+    out.appendChild(resumo);
+
+    grupos.slice(0, 12).forEach((grupo) => {
+        const item = document.createElement('div');
+        item.className = 'developer-log-item';
+        const linhas = grupo.redes.map((rede, index) => {
+            const senha = String(rede.senha || '') || 'vazia';
+            const coords = [window.normalizarCoordenadaDuplicata(rede.lat), window.normalizarCoordenadaDuplicata(rede.lng)].filter(Boolean).join(', ') || 'sem coordenadas';
+            return `${index + 1}. ${rede.id || 'sem id'} | senha ${senha} | ${rede.bssid || 'sem BSSID'} | ${coords}`;
+        }).join('<br>');
+        item.innerHTML = `<strong>${grupo.ssid}</strong><span>${linhas}</span>`;
+        out.appendChild(item);
+    });
+    if (grupos.length > 12) {
+        const extra = document.createElement('div');
+        extra.className = 'developer-log-item';
+        extra.innerHTML = `<strong>Mais ${grupos.length - 12} SSID(s)</strong><span>Use Gerenciar Possiveis Duplicatas para ver todos.</span>`;
+        out.appendChild(extra);
+    }
+    return grupos;
+};
+
+window.analisarPossiveisDuplicatasBanco = function() {
+    const grupos = window.renderizarPossiveisDuplicatasBanco();
+    window.mostrarToast(grupos.length ? `${grupos.length} SSID(s) para revisar.` : 'Nenhuma possivel duplicata encontrada.');
+    return grupos;
+};
+
+window.abrirGerenciamentoPossiveisDuplicatas = function() {
+    window.renderizarPossiveisDuplicatasBanco();
+    const modal = document.getElementById('modalGerenciarDuplicatas');
+    if (modal) modal.style.display = 'flex';
+    window.renderizarGerenciamentoPossiveisDuplicatas();
+};
+
+window.fecharGerenciamentoPossiveisDuplicatas = function() {
+    const modal = document.getElementById('modalGerenciarDuplicatas');
+    if (modal) modal.style.display = 'none';
+};
+
+window.renderizarGerenciamentoPossiveisDuplicatas = function() {
+    const grupos = window.obterPossiveisDuplicatasBanco();
+    const resumo = window.obterResumoDuplicatasBanco();
+    const summary = document.getElementById('duplicateManagerSummary');
+    const out = document.getElementById('duplicateManagerOutput');
+    if (summary) {
+        summary.innerHTML = `Possiveis duplicatas: <strong>${resumo.gruposPossiveis}</strong> SSID(s), <strong>${resumo.redesPossiveis}</strong> rede(s). Duplicatas exatas: <strong>${resumo.duplicatasExatas}</strong> rede(s) em <strong>${resumo.gruposExatos}</strong> grupo(s).`;
+    }
+    if (!out) return grupos;
+    out.innerHTML = '';
+    if (!grupos.length) {
+        out.innerHTML = '<div class="developer-log-item success"><strong>Nenhuma possivel duplicata.</strong><span>Nao ha SSIDs repetidos com dados diferentes.</span></div>';
+        return grupos;
+    }
+
+    grupos.forEach((grupo) => {
+        const section = document.createElement('div');
+        section.className = 'duplicate-group';
+
+        const title = document.createElement('div');
+        title.className = 'duplicate-group-title';
+        title.innerHTML = `<span>${grupo.ssid}</span><span class="duplicate-count-pill">${grupo.redes.length} redes</span>`;
+        section.appendChild(title);
+
+        grupo.redes.forEach((rede) => {
+            const row = document.createElement('div');
+            row.className = 'duplicate-network-row';
+
+            const info = document.createElement('div');
+            info.className = 'duplicate-network-info';
+            const coords = [window.normalizarCoordenadaDuplicata(rede.lat), window.normalizarCoordenadaDuplicata(rede.lng)].filter(Boolean).join(', ') || 'sem coordenadas';
+            info.innerHTML = `<strong>Senha: ${rede.senha || 'vazia'}</strong><span>ID: ${rede.id || 'sem id'}</span><span>BSSID: ${rede.bssid || 'sem BSSID'}</span><span>Coordenadas: ${coords}</span><span>ID logico: ${window.obterIdLogicoRede(rede)}</span>`;
+
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.textContent = 'Excluir';
+            btn.addEventListener('click', () => window.excluirRedePossivelDuplicadaManual(rede.id));
+
+            row.appendChild(info);
+            row.appendChild(btn);
+            section.appendChild(row);
+        });
+
+        out.appendChild(section);
+    });
+    return grupos;
+};
+
+window.excluirRedePossivelDuplicadaManual = async function(id) {
+    const rede = (window.redesEmMemoria || []).find(item => String(item.id || '') === String(id || ''));
+    if (!rede) {
+        window.mostrarToast('Rede nao encontrada.');
+        return;
+    }
+    if (!navigator.onLine && !String(id).startsWith('local_')) {
+        window.mostrarToast('Conecte a internet para excluir do Firebase.');
+        return;
+    }
+    const confirmar = window.confirm(`Excluir manualmente esta rede?\n\nSSID: ${rede.ssid}\nSenha: ${rede.senha || 'vazia'}\nID: ${rede.id}`);
+    if (!confirmar) return;
+
+    await window.criarBackupManutencao('antes_excluir_possivel_duplicata', {
+        redeId: rede.id,
+        ssid: rede.ssid
+    });
+
+    try {
+        if (!String(rede.id || '').startsWith('local_') && typeof window.firebaseExcluir === 'function') {
+            await Promise.resolve(window.firebaseExcluir(rede.id));
+        }
+        window.redesEmMemoria = (window.redesEmMemoria || []).filter(item => String(item.id || '') !== String(rede.id || ''));
+        await window.atualizarBackupLocal(window.redesEmMemoria);
+        if (typeof window.registrarOperacaoBanco === 'function') {
+            window.registrarOperacaoBanco('rede_excluida_manual_duplicata', `Rede excluida manualmente: ${rede.ssid}`, rede, {
+                operacao: 'possible_duplicate_manual_delete'
+            });
+        }
+        if (!window.mostrandoApenasProximas) window.renderizarInterface(window.redesEmMemoria);
+        window.renderizarPossiveisDuplicatasBanco();
+        window.renderizarGerenciamentoPossiveisDuplicatas();
+        if (navigator.onLine && typeof window.carregarBancoFirebaseRest === 'function') {
+            setTimeout(() => window.carregarBancoFirebaseRest('possible_duplicate_manual_delete'), 900);
+        }
+        window.mostrarToast('Rede excluida manualmente.');
+    } catch (error) {
+        console.warn('Falha ao excluir possivel duplicata', error);
+        window.mostrarToast('Falha ao excluir rede.');
+    }
+};
+
+window.exportarPdfPossiveisDuplicatas = async function() {
+    const grupos = window.obterPossiveisDuplicatasBanco();
+    const resumo = window.obterResumoDuplicatasBanco();
+    if (typeof window.jspdf === 'undefined' || !window.jspdf.jsPDF) {
+        window.mostrarToast('Biblioteca PDF nao carregada.');
+        return;
+    }
+
+    const doc = new window.jspdf.jsPDF({ unit: 'pt', format: 'a4' });
+    const margin = 36;
+    const pageHeight = doc.internal.pageSize.getHeight();
+    const pageWidth = doc.internal.pageSize.getWidth();
+    let y = margin;
+
+    const addLine = (text, size = 10, bold = false) => {
+        doc.setFont('helvetica', bold ? 'bold' : 'normal');
+        doc.setFontSize(size);
+        const lines = doc.splitTextToSize(String(text || ''), pageWidth - margin * 2);
+        lines.forEach(line => {
+            if (y > pageHeight - margin) {
+                doc.addPage();
+                y = margin;
+            }
+            doc.text(line, margin, y);
+            y += size + 4;
+        });
+    };
+
+    addLine('Relatorio de Possiveis Duplicatas - Wi-Fi Manager Pro', 14, true);
+    addLine(`Gerado em: ${new Date().toLocaleString('pt-BR')}`);
+    addLine(`Duplicatas exatas: ${resumo.duplicatasExatas} rede(s) em ${resumo.gruposExatos} grupo(s).`);
+    addLine(`Possiveis duplicatas: ${resumo.gruposPossiveis} SSID(s), ${resumo.redesPossiveis} rede(s).`);
+    y += 8;
+
+    if (!grupos.length) addLine('Nenhuma possivel duplicata encontrada.', 11, true);
+
+    grupos.forEach((grupo) => {
+        addLine(`SSID: ${grupo.ssid} (${grupo.redes.length} redes)`, 12, true);
+        grupo.redes.forEach((rede, index) => {
+            const coords = [window.normalizarCoordenadaDuplicata(rede.lat), window.normalizarCoordenadaDuplicata(rede.lng)].filter(Boolean).join(', ') || 'sem coordenadas';
+            addLine(`${index + 1}. ID: ${rede.id || 'sem id'}`);
+            addLine(`   Senha: ${rede.senha || 'vazia'}`);
+            addLine(`   BSSID: ${rede.bssid || 'sem BSSID'}`);
+            addLine(`   Coordenadas: ${coords}`);
+            addLine(`   ID logico: ${window.obterIdLogicoRede(rede)}`);
+        });
+        y += 6;
+    });
+
+    const arrayBuffer = doc.output('arraybuffer');
+    const base64 = window.arrayBufferParaBase64(arrayBuffer);
+    await window.salvarArquivoExportado(
+        `Possiveis_Duplicatas_WiFi_${Date.now()}.pdf`,
+        'application/pdf',
+        base64,
+        new Blob([arrayBuffer], { type: 'application/pdf' })
+    );
+};
+window.removerDuplicatasBanco = async function() {
+    if (!navigator.onLine) {
+        window.mostrarToast('Conecte a internet para remover duplicatas do Firebase.');
+        return;
+    }
+
+    const grupos = window.renderizarDuplicatasBanco();
+    const redesRemover = grupos.flatMap(grupo => grupo.remover);
+    if (!redesRemover.length) {
+        window.mostrarToast('Nenhuma duplicata exata para remover.');
+        return;
+    }
+
+    const confirmar = window.confirm(`Remover ${redesRemover.length} rede(s) duplicada(s) do banco? Uma copia sera mantida por grupo.`);
+    if (!confirmar) return;
+
+    await window.criarBackupManutencao('antes_remover_duplicatas', {
+        grupos: grupos.length,
+        remover: redesRemover.length
+    });
+
+    const out = document.getElementById('duplicateCleanupOutput');
+    if (out) {
+        out.innerHTML = `<div class="developer-log-item"><strong>Removendo duplicatas...</strong><span>${redesRemover.length} rede(s) na fila.</span></div>`;
+    }
+
+    let removidas = 0;
+    let falhas = 0;
+    for (const rede of redesRemover) {
+        const id = String(rede.id || '');
+        if (!id) continue;
+        try {
+            if (!id.startsWith('local_') && typeof window.firebaseExcluir === 'function') {
+                await Promise.resolve(window.firebaseExcluir(id));
+            }
+            window.redesEmMemoria = (window.redesEmMemoria || []).filter(item => String(item.id || '') !== id);
+            removidas++;
+        } catch (error) {
+            falhas++;
+            console.warn('Falha ao remover duplicata', id, error);
+        }
+    }
+
+    if (typeof window.registrarLogEvento === 'function') {
+        window.registrarLogEvento('duplicatas_removidas', `${removidas} duplicata(s) removida(s) do Firebase`, {
+            removidas,
+            falhas,
+            operacao: 'dedupe_cleanup',
+            ids: redesRemover.map(rede => rede.id)
+        });
+    }
+
+    window.redesEmMemoria = window.deduplicarListaRedes(window.redesEmMemoria || []);
+    await window.atualizarBackupLocal(window.redesEmMemoria);
+    if (!window.mostrandoApenasProximas) window.renderizarInterface(window.redesEmMemoria);
+    window.renderizarDuplicatasBanco();
+    window.atualizarContador(navigator.onLine ? 'sincronizando' : 'offline');
+
+    if (navigator.onLine && typeof window.carregarBancoFirebaseRest === 'function') {
+        setTimeout(() => window.carregarBancoFirebaseRest('dedupe_cleanup'), 1200);
+    }
+
+    window.mostrarToast(falhas ? `${removidas} removidas, ${falhas} falha(s).` : `${removidas} duplicata(s) removida(s).`);
+};
+
 window.encontrarRedeMesmoCadastro = function(ssid, senha, bssid = null) {
     const ssidNovo = window.normalizarRedeTexto(ssid);
     const senhaNova = String(senha || '');
@@ -118,15 +611,14 @@ window.normalizarListaLogEventos = function(log) {
         if (!evento) return;
         const timestamp = Number(evento.timestamp || (evento.dados && evento.dados.timestamp) || Date.now());
         const id = String(evento.id || ('log_' + timestamp + '_' + Math.random().toString(36).slice(2, 8)));
-        const normalizado = {
+        porId.set(id, {
             ...evento,
             id,
             timestamp,
             dataIso: evento.dataIso || new Date(timestamp).toISOString(),
             dataLocal: evento.dataLocal || new Date(timestamp).toLocaleString('pt-BR'),
             dados: evento.dados || {}
-        };
-        porId.set(id, normalizado);
+        });
     });
 
     return Array.from(porId.values())
@@ -169,8 +661,7 @@ window.adicionarLogPendente = function(evento) {
 };
 
 window.removerLogPendente = function(id) {
-    const restante = window.obterLogsPendentes().filter(evento => evento.id !== id);
-    window.salvarLogsPendentes(restante);
+    window.salvarLogsPendentes(window.obterLogsPendentes().filter(evento => evento.id !== id));
 };
 
 window.mesclarLogEventos = function(eventos) {
@@ -208,7 +699,6 @@ window.prepararMigracaoLogGlobal = function() {
 
 window.registrarLogEvento = function(tipo, mensagem, dados = {}) {
     const timestamp = Number(dados.timestamp || dados.createdAt) || Date.now();
-    const deviceId = window.obterLogDeviceId();
     const evento = {
         id: 'log_' + timestamp + '_' + Math.random().toString(36).slice(2, 8),
         tipo,
@@ -216,7 +706,7 @@ window.registrarLogEvento = function(tipo, mensagem, dados = {}) {
         timestamp,
         dataIso: new Date(timestamp).toISOString(),
         dataLocal: new Date(timestamp).toLocaleString('pt-BR'),
-        deviceId,
+        deviceId: window.obterLogDeviceId(),
         runtime: window.isNativeRuntime() ? 'apk' : 'pwa',
         dados
     };
@@ -234,12 +724,11 @@ window.registrarLogEvento = function(tipo, mensagem, dados = {}) {
 
 window.registrarOperacaoBanco = function(tipo, mensagem, rede = {}, dados = {}) {
     if (typeof window.registrarLogEvento !== 'function') return null;
-    const redeId = (rede && rede.id) || dados.redeId || null;
     const payload = {
-        redeId,
-        ssid: (rede && rede.ssid) || dados.ssid || null,
-        bssid: (rede && rede.bssid) || dados.bssid || null,
-        local: !!String(redeId || '').startsWith('local_'),
+        redeId: rede?.id || dados.redeId || null,
+        ssid: rede?.ssid || dados.ssid || null,
+        bssid: rede?.bssid || dados.bssid || null,
+        local: !!String(rede?.id || dados.redeId || '').startsWith('local_'),
         online: navigator.onLine,
         ...dados
     };
@@ -276,8 +765,7 @@ window.renderizarLogDesenvolvedor = function() {
         const title = document.createElement('strong');
         title.textContent = evento.mensagem || evento.tipo || 'Evento';
         const meta = document.createElement('span');
-        const tipo = evento.tipo ? `${evento.tipo} - ` : '';
-        meta.textContent = tipo + (evento.dataLocal || new Date(evento.timestamp || Date.now()).toLocaleString('pt-BR'));
+        meta.textContent = evento.dataLocal || new Date(evento.timestamp || Date.now()).toLocaleString('pt-BR');
         item.appendChild(title);
         item.appendChild(meta);
         out.appendChild(item);
@@ -301,46 +789,6 @@ window.limparLogDesenvolvedor = async function() {
     window.mostrarToast('Log local limpo.');
 };
 
-window.mostrarSobreApp = function() {
-    window.mostrarToast('Wi-Fi Manager Pro\nDesenvolvido por Raí Dias');
-};
-
-window.abrirModalGerenciarRoteador = function() {
-    if (typeof window.fecharMenuLateral === 'function') window.fecharMenuLateral();
-    const modal = document.getElementById('modalGerenciarRoteadorPwa');
-    if (modal) modal.style.display = 'flex';
-};
-
-window.fecharModalGerenciarRoteador = function() {
-    const modal = document.getElementById('modalGerenciarRoteadorPwa');
-    if (modal) modal.style.display = 'none';
-};
-
-window.abrirEnderecoRoteador = function(ipOuUrl) {
-    const entrada = String(ipOuUrl || '').trim();
-    if (!entrada) {
-        window.mostrarToast('Digite o IP do roteador.');
-        return;
-    }
-
-    const valor = entrada.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
-    const ipv4 = valor.match(/^(\d{1,3}\.){3}\d{1,3}(:\d+)?$/);
-    if (!ipv4) {
-        window.mostrarToast('IP invalido. Exemplo: 192.168.1.1');
-        return;
-    }
-
-    const octetos = valor.split(':')[0].split('.').map(Number);
-    if (octetos.some(num => Number.isNaN(num) || num < 0 || num > 255)) {
-        window.mostrarToast('IP invalido. Cada bloco precisa estar entre 0 e 255.');
-        return;
-    }
-
-    const url = `http://${valor}`;
-    window.open(url, '_blank', 'noopener,noreferrer');
-    window.fecharModalGerenciarRoteador();
-};
-
 window.vibrar = function() {
     if (navigator.vibrate) navigator.vibrate(40);
 };
@@ -359,29 +807,24 @@ window.aplicarViewMode = function() {
     const out = document.getElementById('output');
     const btn = document.getElementById('btnViewMode');
     if (!out) return;
-    if (window.modoCompacto) {
-        out.classList.add('compact-mode');
-        if(btn) btn.innerText = "🗂️"; 
-    } else {
-        out.classList.remove('compact-mode');
-        if(btn) btn.innerText = "📄"; 
-    }
+    out.classList.toggle('compact-mode', !!window.modoCompacto);
+    if (btn) btn.innerHTML = window.modoCompacto ? '&#9776;' : '&#9636;';
 };
 
-window.aplicarViewMode = function() {
-    const out = document.getElementById('output');
-    const btn = document.getElementById('btnViewMode');
-    if (!out) return;
-    out.classList.toggle('compact-mode', !!window.modoCompacto);
-    if (btn) btn.innerText = window.modoCompacto ? '☷' : '▤';
+window.resolverTemaApp = function(theme = window.appThemeMode) {
+    if (theme !== 'auto') return theme === 'light' ? 'light' : 'dark';
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) return 'light';
+    return 'dark';
 };
 
 window.aplicarTemaApp = function() {
-    const theme = window.appThemeMode || 'dark';
+    const theme = ['dark', 'light', 'auto'].includes(window.appThemeMode) ? window.appThemeMode : 'auto';
+    const resolvedTheme = window.resolverTemaApp(theme);
     const html = document.documentElement;
     html.dataset.theme = theme;
+    html.dataset.resolvedTheme = resolvedTheme;
     const metaTheme = document.querySelector('meta[name="theme-color"]');
-    if (metaTheme) metaTheme.setAttribute('content', theme === 'light' ? '#f4f6fb' : '#0d0e18');
+    if (metaTheme) metaTheme.setAttribute('content', resolvedTheme === 'light' ? '#f4f6fb' : '#0d0e18');
 
     document.querySelectorAll('[data-theme-option]').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.themeOption === theme);
@@ -389,7 +832,7 @@ window.aplicarTemaApp = function() {
 };
 
 window.definirTemaApp = function(theme) {
-    window.appThemeMode = ['dark', 'light', 'auto'].includes(theme) ? theme : 'dark';
+    window.appThemeMode = ['dark', 'light', 'auto'].includes(theme) ? theme : 'auto';
     localStorage.setItem('wifi_pro_theme_v1', window.appThemeMode);
     window.aplicarTemaApp();
 };
@@ -411,11 +854,6 @@ window.aplicarRuntimeLayout = function() {
     document.body.classList.toggle('native-runtime', native);
     document.body.classList.toggle('pwa-runtime', !native);
 
-    const brandVersion = document.getElementById('brandVersionLabel');
-    if (brandVersion) {
-        brandVersion.textContent = native ? 'Versao 2.1' : 'Versao 2.1 PWA';
-    }
-
     const abrirRadar = () => {
         if (typeof window.fecharMenuLateral === 'function') window.fecharMenuLateral();
         if (typeof window.buscarSenhasPorPerto === 'function') {
@@ -423,37 +861,25 @@ window.aplicarRuntimeLayout = function() {
         }
     };
 
-    const abrirWifiReal = () => {
-        if (typeof window.fecharMenuLateral === 'function') window.fecharMenuLateral();
-        if (typeof window.abrirModalWifiReal === 'function') {
-            window.abrirModalWifiReal();
-        }
-    };
-
     const drawerWifi = document.getElementById('drawerWifiAction');
     const bottomWifi = document.getElementById('bottomWifiAction');
 
-    if (!native && bottomWifi) {
-        bottomWifi.innerHTML = '<span class="nav-icon">⌖</span><span class="nav-label">Radar</span><small>GPS</small>';
+    if (bottomWifi && native) {
+        bottomWifi.innerHTML = '<span class="nav-icon">&#128246;</span><span class="nav-label">Scanner</span><small>Wi-Fi</small>';
+        bottomWifi.onclick = () => {
+            if (typeof window.abrirModalWifiReal === 'function') window.abrirModalWifiReal();
+        };
+        bottomWifi.removeAttribute('data-radar-button');
+    } else if (bottomWifi) {
+        bottomWifi.innerHTML = '<span class="nav-icon">&#8982;</span><span class="nav-label">Radar</span><small>GPS</small>';
         bottomWifi.onclick = abrirRadar;
         bottomWifi.setAttribute('data-radar-button', 'true');
-    } else if (bottomWifi) {
-        bottomWifi.innerHTML = '<span class="nav-icon">âŒ</span><span class="nav-label">Scanner</span><small>Wi-Fi</small>';
-        bottomWifi.innerHTML = '<span class="nav-icon">&#8961;</span><span class="nav-label">Scanner</span><small>Wi-Fi</small>';
-        bottomWifi.onclick = abrirWifiReal;
-        bottomWifi.removeAttribute('data-radar-button');
     }
 
     if (drawerWifi) {
-        drawerWifi.innerHTML = '<span class="drawer-icon">⌖</span><span>Radar</span>';
+        drawerWifi.innerHTML = '<span class="drawer-icon">&#8982;</span><span>Radar</span>';
         drawerWifi.onclick = abrirRadar;
         drawerWifi.setAttribute('data-radar-button', 'true');
-        drawerWifi.innerHTML = '<span class="drawer-icon">&#8982;</span><span>Radar</span>';
-    } else if (drawerWifi) {
-        drawerWifi.innerHTML = '<span class="drawer-icon">âŒ</span><span>Redes Encontradas</span>';
-        drawerWifi.innerHTML = '<span class="drawer-icon">&#8961;</span><span>Redes Encontradas</span>';
-        drawerWifi.onclick = abrirWifiReal;
-        drawerWifi.removeAttribute('data-radar-button');
     }
 };
 
@@ -593,28 +1019,18 @@ window.atualizarDashboardLayout = function() {
             if (labelEl) labelEl.textContent = 'Resumo PWA';
             ssidEl.textContent = `${redes.length} redes salvas`;
             metaEl.textContent = 'Use o Radar por GPS ou cadastre uma nova rede manualmente.';
-            if (routerBtn) {
-                routerBtn.disabled = false;
-                routerBtn.onclick = () => window.abrirModalGerenciarRoteador();
-            }
+            if (routerBtn) routerBtn.disabled = true;
             if (saveBtn) saveBtn.disabled = true;
         } else if (current && current.connected && current.ssid) {
             if (labelEl) labelEl.textContent = 'Rede Atual';
             ssidEl.textContent = current.ssid;
-            metaEl.textContent = `${current.level || 'Sinal n/d'} dBm${current.bssid ? ' · ' + current.bssid : ''}`;
-            if (routerBtn) {
-                routerBtn.disabled = false;
-                routerBtn.onclick = () => {
-                    if (typeof window.abrirGerenciadorRoteador === 'function') {
-                        window.abrirGerenciadorRoteador();
-                    }
-                };
-            }
+            metaEl.textContent = `${current.level || 'Sinal n/d'} dBm${current.bssid ? ' - ' + current.bssid : ''}`;
+            if (routerBtn) routerBtn.disabled = false;
             if (saveBtn) saveBtn.disabled = !!(window.redesEmMemoria || []).find(rede => rede.ssid === current.ssid);
         } else {
             if (labelEl) labelEl.textContent = 'Rede Atual';
             ssidEl.textContent = 'Sem Wi-Fi conectado';
-            metaEl.textContent = 'Abra Redes para escanear redes próximas';
+            metaEl.textContent = 'Abra Redes para escanear redes proximas';
             if (routerBtn) routerBtn.disabled = true;
             if (saveBtn) saveBtn.disabled = true;
         }
@@ -670,12 +1086,21 @@ window.renderizarBuscaInicio = function() {
         if (typeof window.conectarRedeWifiReal === 'function') {
             const conectar = document.createElement('button');
             conectar.type = 'button';
-            conectar.textContent = 'Conectar';
-            conectar.addEventListener('click', () => window.conectarRedeWifiReal(rede, {
+            const network = {
                 ssid: rede.ssid,
                 bssid: rede.bssid || '',
                 capabilities: rede.senha ? '[WPA2-PSK]' : ''
-            }, conectar, { forceSwitch: true }));
+            };
+            conectar.textContent = typeof window.obterRotuloAcaoRedeSalvaAndroid === 'function'
+                ? window.obterRotuloAcaoRedeSalvaAndroid(network, [rede])
+                : 'Abrir Wi-Fi';
+            conectar.addEventListener('click', () => {
+                if (typeof window.acionarRedeSalvaNoAndroid === 'function') {
+                    window.acionarRedeSalvaNoAndroid(rede, network, conectar);
+                    return;
+                }
+                window.conectarRedeWifiReal(rede, network, conectar, { forceSwitch: true });
+            });
             actions.appendChild(conectar);
         }
 
@@ -717,6 +1142,46 @@ window.mostrarToast = function(m) {
     t.innerText = m; 
     t.className = 'show'; 
     setTimeout(() => t.className = '', 3000); 
+};
+
+window.mostrarSobreApp = function() {
+    window.mostrarToast('Wi-Fi Manager Pro\nDesenvolvido por Rai Dias');
+    if (typeof window.fecharMenuLateral === 'function') window.fecharMenuLateral();
+};
+
+window.abrirModalGerenciarRoteador = function() {
+    if (typeof window.fecharMenuLateral === 'function') window.fecharMenuLateral();
+    const modal = document.getElementById('modalGerenciarRoteadorPwa');
+    if (modal) modal.style.display = 'flex';
+};
+
+window.fecharModalGerenciarRoteador = function() {
+    const modal = document.getElementById('modalGerenciarRoteadorPwa');
+    if (modal) modal.style.display = 'none';
+};
+
+window.abrirEnderecoRoteador = function(ipOuUrl) {
+    const entrada = String(ipOuUrl || '').trim();
+    if (!entrada) {
+        window.mostrarToast('Digite o IP do roteador.');
+        return;
+    }
+
+    const valor = entrada.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+    const ipv4 = valor.match(/^(\d{1,3}\.){3}\d{1,3}(:\d+)?$/);
+    if (!ipv4) {
+        window.mostrarToast('IP invalido. Exemplo: 192.168.1.1');
+        return;
+    }
+
+    const octetos = valor.split(':')[0].split('.').map(Number);
+    if (octetos.some(num => Number.isNaN(num) || num < 0 || num > 255)) {
+        window.mostrarToast('IP invalido. Cada bloco precisa estar entre 0 e 255.');
+        return;
+    }
+
+    window.open(`http://${valor}`, '_blank', 'noopener,noreferrer');
+    window.fecharModalGerenciarRoteador();
 };
 
 window.abrirModal = function() {
@@ -765,12 +1230,110 @@ window.filtrar = function() {
     document.querySelectorAll('.card').forEach(c => c.style.display = c.dataset.nomeRede.includes(v) ? 'flex' : 'none'); 
 };
 
+window.abrirAbaDesenvolvedor = function(tab = 'import') {
+    document.querySelectorAll('[data-dev-tab-button]').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.devTabButton === tab);
+    });
+    document.querySelectorAll('[data-dev-tab-panel]').forEach(panel => {
+        panel.classList.toggle('active', panel.dataset.devTabPanel === tab);
+    });
+
+    if (tab === 'log') window.renderizarLogDesenvolvedor();
+    if (tab === 'duplicates') {
+        window.renderizarDuplicatasBanco();
+        window.renderizarPossiveisDuplicatasBanco();
+    }
+    if (tab === 'diagnostic') window.renderizarEstadoDiagnosticoFirebase();
+    if (tab === 'history') window.renderizarHistoricoRede();
+    if (tab === 'maintenance') window.renderizarBackupManutencao();
+};
+
+window.renderizarEstadoDiagnosticoFirebase = function(resultado = null) {
+    const out = document.getElementById('firebaseDiagnosticOutput');
+    if (!out) return;
+    const estado = typeof window.getFirebaseDiagnosticState === 'function'
+        ? window.getFirebaseDiagnosticState()
+        : {};
+    const lastSync = estado.lastSyncAt ? new Date(estado.lastSyncAt).toLocaleString('pt-BR') : 'sem sincronizacao registrada';
+    const classe = resultado && resultado.ok === false ? 'danger' : 'success';
+    out.innerHTML = `<div class="developer-log-item ${classe}"><strong>Estado atual</strong><span>Modo: ${estado.mode || 'indefinido'}</span><span>Ultima sync: ${lastSync}</span><span>Total recebido: ${estado.lastTotal ?? 'n/d'} | Origem: ${estado.lastOrigin || 'n/d'}</span><span>${estado.lastError ? 'Ultimo erro: ' + estado.lastError : 'Sem erro registrado'}</span></div>`;
+    if (resultado) {
+        const item = document.createElement('div');
+        item.className = `developer-log-item ${resultado.ok ? 'success' : 'danger'}`;
+        item.innerHTML = `<strong>Teste ${resultado.ok ? 'aprovado' : 'falhou'}</strong><span>Leitura: ${resultado.read ? 'OK' : 'Falhou'}</span><span>Escrita: ${resultado.write ? 'OK' : 'Falhou'}</span><span>Exclusao: ${resultado.delete ? 'OK' : 'Falhou'}</span><span>${resultado.error || 'Firebase respondeu normalmente.'}</span>`;
+        out.appendChild(item);
+    }
+};
+
+window.testarDiagnosticoFirebase = async function() {
+    const out = document.getElementById('firebaseDiagnosticOutput');
+    if (out) out.innerHTML = '<div class="developer-log-item"><strong>Testando Firebase...</strong><span>Verificando leitura, escrita e exclusao.</span></div>';
+    let resultado;
+    if (typeof window.executarDiagnosticoFirebase === 'function') {
+        resultado = await window.executarDiagnosticoFirebase();
+    } else {
+        resultado = { ok: false, read: false, write: false, delete: false, error: 'Diagnostico Firebase ainda nao inicializado.' };
+    }
+    window.renderizarEstadoDiagnosticoFirebase(resultado);
+    window.mostrarToast(resultado.ok ? 'Firebase OK.' : 'Firebase com falha no diagnostico.');
+};
+
+window.renderizarHistoricoRede = function() {
+    const input = document.getElementById('historySearchInput');
+    const out = document.getElementById('networkHistoryOutput');
+    if (!out) return;
+    const termo = String(input?.value || '').trim().toLowerCase();
+    if (!termo) {
+        out.innerHTML = '<div class="developer-log-item"><strong>Historico por rede</strong><span>Digite SSID ou ID para filtrar eventos do log global.</span></div>';
+        return;
+    }
+
+    const eventos = window.obterLogEventos().filter(evento => {
+        const dados = evento.dados || {};
+        return String(dados.redeId || '').toLowerCase().includes(termo)
+            || String(dados.ssid || '').toLowerCase().includes(termo)
+            || String(evento.mensagem || '').toLowerCase().includes(termo);
+    });
+
+    const redes = (window.redesEmMemoria || []).filter(rede => {
+        return String(rede.id || '').toLowerCase().includes(termo)
+            || String(rede.ssid || '').toLowerCase().includes(termo);
+    });
+
+    out.innerHTML = '';
+    if (redes.length) {
+        const resumo = document.createElement('div');
+        resumo.className = 'developer-log-item success';
+        resumo.innerHTML = `<strong>${redes.length} rede(s) encontrada(s)</strong><span>${redes.slice(0, 5).map(rede => `${rede.ssid} (${rede.id})`).join('<br>')}</span>`;
+        out.appendChild(resumo);
+    }
+
+    if (!eventos.length) {
+        const vazio = document.createElement('div');
+        vazio.className = 'developer-log-item';
+        vazio.innerHTML = '<strong>Nenhum evento encontrado.</strong><span>O log global pode nao ter eventos antigos dessa rede.</span>';
+        out.appendChild(vazio);
+        return;
+    }
+
+    eventos.slice(0, 80).forEach(evento => {
+        const item = document.createElement('div');
+        item.className = 'developer-log-item';
+        const dados = evento.dados || {};
+        item.innerHTML = `<strong>${evento.mensagem || evento.tipo}</strong><span>${evento.dataLocal || new Date(evento.timestamp || Date.now()).toLocaleString('pt-BR')}</span><span>ID: ${dados.redeId || 'n/d'} | SSID: ${dados.ssid || 'n/d'}</span><span>Tipo: ${evento.tipo || 'evento'}</span>`;
+        out.appendChild(item);
+    });
+};
+
 window.abrirModalAvancado = function() { 
     window.fecharMenuLateral();
     document.getElementById('modalAvancado').style.display = 'flex'; 
     const inputOculta = document.getElementById('listaInputOculta');
     inputOculta.value = window.redesEmMemoria.map(r => `* ${r.ssid}: ${r.senha}`).join('\n\n');
     window.renderizarLogDesenvolvedor();
+    window.renderizarBackupManutencao();
+    window.renderizarEstadoDiagnosticoFirebase();
+    window.abrirAbaDesenvolvedor('import');
 };
 
 window.fecharModalAvancado = function() { document.getElementById('modalAvancado').style.display = 'none'; };
@@ -878,9 +1441,9 @@ window.renderizarWifiQr = async function(target, text) {
     throw ultimoErro || new Error('Falha ao gerar QR');
 };
 
-// MANUTENÇÃO / HARD RESET
+// MANUTENÃ‡ÃƒO / HARD RESET
 window.hardResetPWA = async function() {
-    if(!confirm("Atenção: Isso vai limpar o cache interno e atualizar o App para a versão mais recente. Deseja continuar?")) return;
+    if(!confirm("Atencao: Isso vai limpar o cache interno e atualizar o App para a versao mais recente. Deseja continuar?")) return;
     
     window.vibrar();
     window.mostrarToast("Limpando PWA...");
@@ -899,7 +1462,7 @@ window.hardResetPWA = async function() {
         await Promise.all(cacheNames.map(name => caches.delete(name)));
     }
     
-    alert("App atualizado! Ele será reiniciado agora.");
+    alert("App atualizado! Ele sera reiniciado agora.");
     window.location.reload(true);
 };
 
@@ -948,7 +1511,7 @@ window.atualizarBackupLocal = async function(lista) {
     if(inputOculta) inputOculta.value = txtBackup; 
 };
 
-// SINCRONIZAÇÃO E CONTADORES
+// SINCRONIZAÃ‡ÃƒO E CONTADORES
 window.atualizarContador = function(modo, totalNuvem = 0) {
     const el = document.getElementById('statusContador');
     if(!el) return;
@@ -960,14 +1523,14 @@ window.atualizarContador = function(modo, totalNuvem = 0) {
     const totalPendentes = pendentesCriacao + pendentesExclusao + pendentesUpdate;
     const total = window.redesEmMemoria.length;
     
-    let avisoPendentes = totalPendentes > 0 ? `<span style="color:#F59E0B; font-weight:bold; background:rgba(245, 158, 11, 0.15); padding:3px 8px; border-radius:6px; margin-left: 5px; border: 1px solid rgba(245, 158, 11, 0.3);">⚠️ ${totalPendentes}</span>` : '';
+    let avisoPendentes = totalPendentes > 0 ? `<span style="color:#F59E0B; font-weight:bold; background:rgba(245, 158, 11, 0.15); padding:3px 8px; border-radius:6px; margin-left: 5px; border: 1px solid rgba(245, 158, 11, 0.3);">Pendentes: ${totalPendentes}</span>` : '';
 
     if (modo === 'offline') {
-        el.innerHTML = `<span style="color:var(--text-muted);">📱 Offline (${total})</span> ${avisoPendentes}`;
+        el.innerHTML = `<span style="color:var(--text-muted);">Offline (${total})</span> ${avisoPendentes}`;
     } else if (modo === 'sincronizando') {
-        el.innerHTML = `<span style="color:var(--warning);">⏳ Sync...</span>`;
+        el.innerHTML = `<span style="color:var(--warning);">Sync...</span>`;
     } else if (modo === 'sincronizado') {
-        el.innerHTML = `<span style="color:var(--success);">☁️ Online (${totalNuvem})</span>`;
+        el.innerHTML = `<span style="color:var(--success);">Online (${totalNuvem})</span>`;
     }
 };
 
@@ -977,13 +1540,11 @@ window.sincronizarPendentes = async function() {
     let filaExclusao = JSON.parse(localStorage.getItem('wifi_pro_deletes_v1') || '[]');
     if (filaExclusao.length > 0) {
         filaExclusao.forEach(id => {
-            if(typeof window.firebaseExcluir === 'function') {
-                window.firebaseExcluir(id);
-                window.registrarOperacaoBanco('sync_exclusao_enviada', `Exclusao sincronizada: ${id}`, { id }, {
-                    redeId: id,
-                    origem: 'fila_offline'
-                });
-            }
+            if(typeof window.firebaseExcluir === 'function') window.firebaseExcluir(id);
+            window.registrarLogEvento('sync_exclusao_enviada', `Exclusao sincronizada: ${id}`, {
+                redeId: id,
+                operacao: 'delete'
+            });
         });
         localStorage.removeItem('wifi_pro_deletes_v1');
     }
@@ -996,15 +1557,12 @@ window.sincronizarPendentes = async function() {
             if(up.lat !== undefined) { toUpdate.lat = up.lat; toUpdate.lng = up.lng; }
             if(up.ssid !== undefined) { toUpdate.ssid = up.ssid; toUpdate.senha = up.senha; }
             if(up.bssid !== undefined) { toUpdate.bssid = up.bssid; }
-            if(typeof window.firebaseAtualizarObjeto === 'function') {
-                window.firebaseAtualizarObjeto(id, toUpdate);
-                const redeAtualizada = window.redesEmMemoria.find(r => r.id === id) || { id, ...toUpdate };
-                window.registrarOperacaoBanco('sync_atualizacao_enviada', `Atualizacao sincronizada: ${redeAtualizada.ssid || id}`, redeAtualizada, {
-                    redeId: id,
-                    campos: Object.keys(toUpdate),
-                    origem: 'fila_offline'
-                });
-            }
+            if(typeof window.firebaseAtualizarObjeto === 'function') window.firebaseAtualizarObjeto(id, toUpdate);
+            window.registrarLogEvento('sync_update_enviado', `Atualizacao sincronizada: ${id}`, {
+                redeId: id,
+                campos: Object.keys(toUpdate),
+                operacao: 'update'
+            });
         });
         localStorage.removeItem('wifi_pro_updates_v1');
     }
@@ -1015,19 +1573,12 @@ window.sincronizarPendentes = async function() {
         await window.atualizarBackupLocal(window.redesEmMemoria);
         pendentes.forEach(rede => {
             const meta = window.criarMetadadosCadastroRede(window.getRedeRecentTimestamp(rede) || Date.now());
-            const cloudId = window.firebasePush(rede.ssid, rede.senha, rede.lat, rede.lng, rede.bssid, {
+            window.firebasePush(rede.ssid, rede.senha, rede.lat, rede.lng, rede.bssid, {
                 ...meta,
                 createdAtLocal: rede.createdAtLocal || meta.createdAtLocal
             });
-            window.registrarOperacaoBanco('sync_criacao_enviada', `Rede enviada para nuvem: ${rede.ssid}`, {
-                ...rede,
-                id: cloudId || rede.id
-            }, {
-                redeId: cloudId || rede.id,
-                redeLocalId: rede.id,
-                createdAt: meta.createdAt,
-                timestamp: Date.now(),
-                origem: 'fila_offline'
+            window.registrarOperacaoBanco('sync_criacao_enviada', `Rede local enviada para nuvem: ${rede.ssid}`, rede, {
+                operacao: 'create'
             });
         });
     }
@@ -1042,6 +1593,18 @@ window.addEventListener('online', () => {
 
 window.addEventListener('offline', () => { window.atualizarContador('offline'); });
 
+if (window.matchMedia) {
+    const themeMedia = window.matchMedia('(prefers-color-scheme: light)');
+    const refreshAutoTheme = () => {
+        if (window.appThemeMode === 'auto') window.aplicarTemaApp();
+    };
+    if (themeMedia.addEventListener) {
+        themeMedia.addEventListener('change', refreshAutoTheme);
+    } else if (themeMedia.addListener) {
+        themeMedia.addListener(refreshAutoTheme);
+    }
+}
+
 window.addEventListener('DOMContentLoaded', async () => {
     window.aplicarTemaApp();
     window.aplicarModoDesenvolvedor();
@@ -1051,7 +1614,13 @@ window.addEventListener('DOMContentLoaded', async () => {
     try {
         const dadosLocal = await window.lerDoIndexedDB();
         if (dadosLocal && dadosLocal.length > 0) {
-            window.redesEmMemoria = dadosLocal;
+            window.redesEmMemoria = window.deduplicarListaRedes(dadosLocal);
+            if (window.redesEmMemoria.length !== dadosLocal.length) {
+                window.registrarLogEvento('duplicata_removida', `${dadosLocal.length - window.redesEmMemoria.length} duplicata(s) removida(s) ao abrir o app`, {
+                    removidas: dadosLocal.length - window.redesEmMemoria.length
+                });
+                await window.atualizarBackupLocal(window.redesEmMemoria);
+            }
             window.renderizarInterface(window.redesEmMemoria);
             if (typeof window.atualizarPreScanWifiComBanco === 'function') {
                 window.atualizarPreScanWifiComBanco();
@@ -1062,7 +1631,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     window.atualizarDashboardLayout();
     window.mostrarTelaApp(window.appCurrentView);
     
-    // CORREÇÃO 1: QR CODE LENGTH OVERFLOW
+    // CORREÃ‡ÃƒO 1: QR CODE LENGTH OVERFLOW
     if (typeof QRCode !== 'undefined' || typeof window.QRCodeModern !== 'undefined') {
         window.observer = new IntersectionObserver((entries) => {
             entries.forEach(entry => {
@@ -1075,7 +1644,7 @@ window.addEventListener('DOMContentLoaded', async () => {
                             console.error("Erro ao gerar QR:", err);
                         });
                         return;
-                        // Função para escapar caracteres especiais no formato Wi-Fi
+                        // FunÃ§Ã£o para escapar caracteres especiais no formato Wi-Fi
                         const escapeWiFiChar = (str) => {
                             return str.replace(/\\/g, '\\\\').replace(/;/g, '\\;').replace(/:/g, '\\:').replace(/"/g, '\\"');
                         };
@@ -1083,10 +1652,10 @@ window.addEventListener('DOMContentLoaded', async () => {
                         const ssid = escapeWiFiChar(entry.target.dataset.ssid);
                         const pass = escapeWiFiChar(entry.target.dataset.pass);
                         
-                        // Formato Wi-Fi padrão com escape de caracteres especiais
+                        // Formato Wi-Fi padrÃ£o com escape de caracteres especiais
                         const wifiString = window.criarWifiQrPayload(entry.target.dataset.ssid, entry.target.dataset.pass);
                         
-                        // Tenta com diferentes níveis de correção (M é melhor para dados grandes)
+                        // Tenta com diferentes nÃ­veis de correÃ§Ã£o (M Ã© melhor para dados grandes)
                         let tentativas = [QRCode.CorrectLevel.M, QRCode.CorrectLevel.L, QRCode.CorrectLevel.H];
                         let gerado = false;
                         
@@ -1104,13 +1673,13 @@ window.addEventListener('DOMContentLoaded', async () => {
                                 gerado = true;
                                 break;
                             } catch (e) {
-                                // Tenta o próximo nível
+                                // Tenta o prÃ³ximo nÃ­vel
                                 continue;
                             }
                         }
                         
                         if (!gerado) {
-                            throw new Error("Falha em todos os níveis de correção");
+                            throw new Error("Falha em todos os niveis de correcao");
                         }
                         
                         entry.target.dataset.rendered = "true";
@@ -1124,7 +1693,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
 });
 
-// OPERAÇÕES DE REDE (CRUD)
+// OPERAÃ‡Ã•ES DE REDE (CRUD)
 window.renderizarInterface = function(lista, radar = false) {
     const out = document.getElementById('output');
     if(!out) return;
@@ -1133,11 +1702,11 @@ window.renderizarInterface = function(lista, radar = false) {
         const div = document.createElement('div');
         div.className = 'card'; div.dataset.nomeRede = r.ssid.toLowerCase();
         
-        // CORREÇÃO 2: Parsing de GPS para o Radar funcionar
+        // CORREÃ‡ÃƒO 2: Parsing de GPS para o Radar funcionar
         const latF = parseFloat(String(r.lat).replace(',', '.'));
-        const distBadge = (radar && !isNaN(latF)) ? `<div class="badge-geo" style="background:rgba(16, 185, 129, 0.1); color:var(--success); border-color:rgba(16, 185, 129, 0.3);">A ${Math.round(r.d)}m</div>` : (r.lat ? `<div class="badge-geo">📍 Local Salvo</div>` : '');
+        const distBadge = (radar && !isNaN(latF)) ? `<div class="badge-geo" style="background:rgba(16, 185, 129, 0.1); color:var(--success); border-color:rgba(16, 185, 129, 0.3);">A ${Math.round(r.d)}m</div>` : (r.lat ? `<div class="badge-geo">Local Salvo</div>` : '');
         
-        const btnMapa = r.lat ? "🗺️ Editar Local" : "📍 Add Local";
+        const btnMapa = r.lat ? "Editar Local" : "Add Local";
         const corMapa = r.lat ? "var(--geo)" : "#6366F1";
 
         div.innerHTML = `
@@ -1148,10 +1717,10 @@ window.renderizarInterface = function(lista, radar = false) {
             </div>
             <div class="qrcode" data-ssid="${r.ssid}" data-pass="${r.senha}">Gerando...</div>
             <div class="card-actions">
-                <button class="btn-mini" style="background:var(--btn-copy-bg);color:var(--text-main)" onclick="copy('${r.senha}')">📋 Copiar</button>
-                <button class="btn-mini" style="background:var(--success);color:#fff" onclick="compartilharRede('${r.ssid}', '${r.senha}')">🔗 Compartilhar</button>
+                <button class="btn-mini" style="background:var(--btn-copy-bg);color:var(--text-main)" onclick="copy('${r.senha}')">&#128203; Copiar</button>
+                <button class="btn-mini" style="background:var(--success);color:#fff" onclick="compartilharRede('${r.ssid}', '${r.senha}')">&#128279; Compartilhar</button>
                 <button class="btn-mini" style="background:${corMapa}; color:#fff;" onclick="window.abrirMapaParaRede('${r.id}','${r.ssid}','${r.lat}','${r.lng}')">${btnMapa}</button>
-                <button class="btn-mini" style="background:var(--warning); color:#fff;" onclick="abrirModalEditar('${r.id}')">✏️ Editar</button>
+                <button class="btn-mini" style="background:var(--warning); color:#fff;" onclick="abrirModalEditar('${r.id}')">&#9998; Editar</button>
             </div>`;
         out.appendChild(div);
         if(window.observer) window.observer.observe(div.querySelector('.qrcode'));
@@ -1163,10 +1732,15 @@ window.renderizarInterface = function(lista, radar = false) {
     if (!out) return;
     if (!radar && Array.isArray(lista) && typeof window.deduplicarListaRedes === 'function') {
         const listaDeduplicada = window.deduplicarListaRedes(lista);
-        if (listaDeduplicada.length !== lista.length || lista === window.redesEmMemoria) {
+        if (lista === window.redesEmMemoria && listaDeduplicada.length !== lista.length) {
+            const removidas = lista.length - listaDeduplicada.length;
             window.redesEmMemoria = listaDeduplicada;
-            lista = window.redesEmMemoria;
+            window.atualizarBackupLocal(window.redesEmMemoria);
+            window.registrarLogEvento('duplicata_removida', `${removidas} duplicata(s) removida(s) ao atualizar a lista`, {
+                removidas
+            });
         }
+        lista = listaDeduplicada;
     }
     window.atualizarDashboardLayout();
     window.renderizarBuscaInicio();
@@ -1228,10 +1802,10 @@ window.renderizarInterface = function(lista, radar = false) {
             return button;
         };
 
-        actions.appendChild(criarBotao('⧉ Copiar', 'var(--btn-copy-bg)', 'var(--text-main)', () => window.copy(senha)));
-        actions.appendChild(criarBotao('⇪ Compartilhar', 'var(--success)', '#fff', () => window.compartilharRede(ssid, senha)));
-        actions.appendChild(criarBotao(r.lat ? '⌖ Editar Local' : '⌖ Add Local', r.lat ? 'var(--geo)' : '#6366F1', '#fff', () => window.abrirMapaParaRede(r.id, ssid, r.lat, r.lng)));
-        actions.appendChild(criarBotao('✎ Editar', 'var(--warning)', '#fff', () => window.abrirModalEditar(r.id)));
+        actions.appendChild(criarBotao('Copiar', 'var(--btn-copy-bg)', 'var(--text-main)', () => window.copy(senha)));
+        actions.appendChild(criarBotao('Compartilhar', 'var(--success)', '#fff', () => window.compartilharRede(ssid, senha)));
+        actions.appendChild(criarBotao(r.lat ? 'Editar Local' : 'Add Local', r.lat ? 'var(--geo)' : '#6366F1', '#fff', () => window.abrirMapaParaRede(r.id, ssid, r.lat, r.lng)));
+        actions.appendChild(criarBotao('Editar', 'var(--warning)', '#fff', () => window.abrirModalEditar(r.id)));
 
         div.appendChild(cardInfo);
         div.appendChild(qr);
@@ -1286,7 +1860,7 @@ window.checarDuplicadoModal = function() {
         btnSalvar.style.display = 'none'; 
         checkLoc.style.display = 'none';
         btnGeo.style.display = 'flex';
-        msg.innerText = !window.redeDuplicadaAtual.lat ? "ℹ️ Esta rede já existe sem localização." : "ℹ️ Esta rede já existe com localização.";
+        msg.innerText = !window.redeDuplicadaAtual.lat ? "Esta rede ja existe sem localizacao." : "Esta rede ja existe com localizacao.";
     } else {
         msg.style.display = 'none'; 
         btnSalvar.style.display = 'flex'; 
@@ -1316,7 +1890,7 @@ window.salvarEdicaoRede = async function() {
     const s = document.getElementById('editSSID').value.trim();
     const p = document.getElementById('editSenha').value.trim();
     if(!s || !p) { window.mostrarToast("Preencha o nome e a senha!"); return; }
-    if(p.length < 8) { window.mostrarToast("⚠️ A senha deve ter no mínimo 8 caracteres!"); return; }
+    if(p.length < 8) { window.mostrarToast("A senha deve ter no minimo 8 caracteres!"); return; }
 
     const id = window.redeEditandoAtual.id;
     const index = window.redesEmMemoria.findIndex(r => r.id === id);
@@ -1325,6 +1899,7 @@ window.salvarEdicaoRede = async function() {
     if(index !== -1) {
         window.redesEmMemoria[index].ssid = s;
         window.redesEmMemoria[index].senha = p;
+        window.redesEmMemoria[index].logicalId = window.obterIdLogicoRede(window.redesEmMemoria[index]);
     }
 
     if (navigator.onLine && typeof window.firebaseEditarCredenciais === 'function' && !id.toString().startsWith('local_')) {
@@ -1391,7 +1966,7 @@ window.desfazerExclusao = function() {
     window.atualizarContador(navigator.onLine ? 'sincronizando' : 'offline');
     window.redePendenteExclusao = null;
     document.getElementById('toast-undo').className = '';
-    window.mostrarToast("Ação desfeita!");
+    window.mostrarToast("Acao desfeita!");
 };
 
 window.confirmarExclusaoDefinitiva = function() {
@@ -1430,17 +2005,17 @@ window.atualizarGeoRedeExistente = async function() {
                 lat = l; 
                 lng = g; 
             } else {
-                window.mostrarToast("Coordenadas inválidas! Use o formato: -23.55, -46.63");
+                window.mostrarToast("Coordenadas invalidas! Use o formato: -23.55, -46.63");
                 return;
             }
         } else {
-            window.mostrarToast("Coordenadas inválidas! Use o formato: -23.55, -46.63");
+            window.mostrarToast("Coordenadas invalidas! Use o formato: -23.55, -46.63");
             return;
         }
     } 
     // PRIORIDADE 2: GPS do celular (apenas se checkbox marcado e sem coordenadas manuais)
     else if (usarGeo) {
-        btnGeo.innerText = "📍 Obtendo GPS..."; btnGeo.disabled = true;
+        btnGeo.innerText = "Obtendo GPS..."; btnGeo.disabled = true;
         try {
             const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, {
                 enableHighAccuracy: true, timeout: 7000 
@@ -1448,14 +2023,14 @@ window.atualizarGeoRedeExistente = async function() {
             lat = pos.coords.latitude; 
             lng = pos.coords.longitude;
         } catch(e) { 
-            window.mostrarToast("GPS falhou. Verifique as permissões."); 
-            btnGeo.innerText = "📍 Adicionar GPS Agora"; 
+            window.mostrarToast("GPS falhou. Verifique as permissoes."); 
+            btnGeo.innerText = "Adicionar GPS Agora"; 
             btnGeo.disabled = false;
             return;
         }
     }
-    // PRIORIDADE 3: Sem localização (campo vazio e checkbox desmarcado)
-    // Neste caso, lat e lng permanecem null, o que é válido
+    // PRIORIDADE 3: Sem localizaÃ§Ã£o (campo vazio e checkbox desmarcado)
+    // Neste caso, lat e lng permanecem null, o que Ã© vÃ¡lido
 
     const id = window.redeDuplicadaAtual.id;
     const index = window.redesEmMemoria.findIndex(r => r.id === id);
@@ -1465,7 +2040,7 @@ window.atualizarGeoRedeExistente = async function() {
         window.redesEmMemoria[index].lng = lng;
     }
 
-    // Sincronização com Firebase ou Fila de Updates
+    // SincronizaÃ§Ã£o com Firebase ou Fila de Updates
     if (navigator.onLine && typeof window.firebaseAtualizarObjeto === 'function' && !id.toString().startsWith('local_')) {
         window.firebaseAtualizarObjeto(id, { lat, lng });
     } else if (!id.toString().startsWith('local_')) {
@@ -1488,10 +2063,10 @@ window.atualizarGeoRedeExistente = async function() {
     });
     window.renderizarInterface(window.redesEmMemoria);
     window.fecharModal();
-    btnGeo.innerText = "📍 Adicionar GPS Agora"; 
+    btnGeo.innerText = "Adicionar GPS Agora"; 
     btnGeo.disabled = false;
     
-    const msgSucesso = lat && lng ? "Localização adicionada com sucesso!" : "Rede atualizada sem localização!";
+    const msgSucesso = lat && lng ? "Localizacao adicionada com sucesso!" : "Rede atualizada sem localizacao!";
     window.mostrarToast(msgSucesso);
 };
 
@@ -1542,17 +2117,17 @@ window.salvarRedeLocal = async function() {
                 lat = l; 
                 lng = g; 
             } else {
-                window.mostrarToast("Coordenadas inválidas! Use o formato: -23.55, -46.63");
+                window.mostrarToast("Coordenadas invalidas! Use o formato: -23.55, -46.63");
                 return;
             }
         } else {
-            window.mostrarToast("Coordenadas inválidas! Use o formato: -23.55, -46.63");
+            window.mostrarToast("Coordenadas invalidas! Use o formato: -23.55, -46.63");
             return;
         }
     } 
     // PRIORIDADE 2: GPS do celular (apenas se checkbox marcado e sem coordenadas manuais)
     else if (usarGeo) {
-        btnSalvar.innerText = "📍 Obtendo GPS..."; 
+        btnSalvar.innerText = "Obtendo GPS..."; 
         btnSalvar.disabled = true;
         try {
             const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, {
@@ -1561,12 +2136,12 @@ window.salvarRedeLocal = async function() {
             lat = pos.coords.latitude; 
             lng = pos.coords.longitude;
         } catch(e) { 
-            window.mostrarToast("GPS falhou. Rede salva sem localização.");
-            // Continua salvando sem localização
+            window.mostrarToast("GPS falhou. Rede salva sem localizacao.");
+            // Continua salvando sem localizaÃ§Ã£o
         }
     }
-    // PRIORIDADE 3: Sem localização (campo vazio e checkbox desmarcado)
-    // Neste caso, lat e lng permanecem null, o que é válido
+    // PRIORIDADE 3: Sem localizaÃ§Ã£o (campo vazio e checkbox desmarcado)
+    // Neste caso, lat e lng permanecem null, o que Ã© vÃ¡lido
 
     const bssid = typeof window.normalizarWifiBssid === 'function'
         ? window.normalizarWifiBssid(window.novaRedeBssidSugerida)
@@ -1596,15 +2171,16 @@ window.salvarRedeLocal = async function() {
     }
 
     const metaCriacao = window.criarMetadadosCadastroRede();
+    const logicalId = window.obterIdLogicoRede({ ssid: s, senha: p, lat, lng, bssid: bssid || null });
     let novoId = 'local_' + metaCriacao.createdAt; 
     if (navigator.onLine && typeof window.firebasePush === 'function') {
-        const key = window.firebasePush(s, p, lat, lng, bssid || null, metaCriacao);
+        const key = window.firebasePush(s, p, lat, lng, bssid || null, { ...metaCriacao, logicalId });
         if (key) novoId = key;
     }
 
-    const novaRede = { id: novoId, ssid: s, senha: p, lat, lng, bssid: bssid || null, ...metaCriacao };
+    const novaRede = { id: novoId, ssid: s, senha: p, lat, lng, bssid: bssid || null, logicalId, ...metaCriacao };
     window.redesEmMemoria.push(novaRede);
-    window.registrarOperacaoBanco('rede_adicionada', `Rede adicionada: ${s}`, novaRede, {
+    window.registrarLogEvento('rede_adicionada', `Rede adicionada: ${s}`, {
         redeId: novoId,
         ssid: s,
         senha: p,
@@ -1626,7 +2202,7 @@ window.salvarRedeLocal = async function() {
     const conectando = await window.tentarConectarRedeRecemCadastrada(novaRede, contextoWifiCadastro, conectarAposCadastro);
     if (conectando) return;
     
-    const msgSucesso = lat && lng ? "Rede salva com localização!" : "Rede salva sem localização!";
+    const msgSucesso = lat && lng ? "Rede salva com localizacao!" : "Rede salva sem localizacao!";
     window.mostrarToast(msgSucesso);
 };
 
@@ -1646,8 +2222,7 @@ window.importarListaTexto = async function() {
                 if (p.length >= 8 && !window.redesEmMemoria.find(r => r.ssid === s)) {
                     const metaImportacao = window.criarMetadadosCadastroRede(Date.now() + adicionados);
                     window.redesEmMemoria.push({ id: 'local_' + metaImportacao.createdAt, ssid: s, senha: p, lat: null, lng: null, ...metaImportacao });
-                    const redeImportada = { id: 'local_' + metaImportacao.createdAt, ssid: s, senha: p, lat: null, lng: null, ...metaImportacao };
-                    window.registrarOperacaoBanco('rede_adicionada', `Rede adicionada por importacao: ${s}`, redeImportada, {
+                    window.registrarLogEvento('rede_adicionada', `Rede adicionada por importacao: ${s}`, {
                         redeId: 'local_' + metaImportacao.createdAt,
                         ssid: s,
                         senha: p,
@@ -1785,21 +2360,23 @@ window.aplicarRedesImportadas = async function(redes) {
 
         if (existente) {
             let mudou = false;
+            const camposAtualizados = [];
             if (bssid && !window.normalizarBssidImportacao(existente.bssid)) {
                 existente.bssid = bssid;
                 mudou = true;
+                camposAtualizados.push('bssid');
             }
             if (rede.lat !== null && rede.lng !== null && (!existente.lat || !existente.lng)) {
                 existente.lat = rede.lat;
                 existente.lng = rede.lng;
                 mudou = true;
+                camposAtualizados.push('lat', 'lng');
             }
-            if (mudou) atualizados++;
             if (mudou) {
+                atualizados++;
                 window.registrarOperacaoBanco('rede_atualizada_importacao', `Rede atualizada por importacao: ${existente.ssid}`, existente, {
-                    bssid: bssid || null,
-                    lat: rede.lat ?? null,
-                    lng: rede.lng ?? null
+                    campos: camposAtualizados,
+                    origem: 'importacao'
                 });
             }
             return;
@@ -1814,14 +2391,16 @@ window.aplicarRedesImportadas = async function(redes) {
             bssid: bssid || null,
             lat: rede.lat ?? null,
             lng: rede.lng ?? null,
-            ...metaImportacao
+            ...metaImportacao,
+            logicalId: window.obterIdLogicoRede({
+                ssid: rede.ssid,
+                senha: rede.senha,
+                bssid: bssid || null,
+                lat: rede.lat ?? null,
+                lng: rede.lng ?? null
+            })
         });
-        window.registrarOperacaoBanco('rede_adicionada', `Rede adicionada por importacao: ${rede.ssid}`, {
-            id: redeIdImportada,
-            ssid: rede.ssid,
-            senha: rede.senha,
-            bssid: bssid || null
-        }, {
+        window.registrarLogEvento('rede_adicionada', `Rede adicionada por importacao: ${rede.ssid}`, {
             redeId: redeIdImportada,
             ssid: rede.ssid,
             senha: rede.senha,
@@ -1852,15 +2431,10 @@ window.importarListaTexto = async function() {
         return;
     }
 
-    const result = await window.aplicarRedesImportadas(redes);
-    const tipoImportacao = (result.adicionados > 0 || result.atualizados > 0)
-        ? 'importacao_concluida'
-        : 'importacao_sem_alteracoes';
-    window.registrarLogEvento(tipoImportacao, `Importacao finalizada: ${result.adicionados} adicionadas, ${result.atualizados} atualizadas`, {
-        adicionados: result.adicionados,
-        atualizados: result.atualizados,
-        reconhecidas: redes.length
+    await window.criarBackupManutencao('antes_importar_texto', {
+        redesImportadas: redes.length
     });
+    const result = await window.aplicarRedesImportadas(redes);
     window.fecharModalAvancado();
     window.mostrarToast(`${result.adicionados} adicionadas, ${result.atualizados} atualizadas.`);
 };
@@ -1921,6 +2495,10 @@ window.importarArquivoBackup = async function(event) {
             return;
         }
 
+        await window.criarBackupManutencao('antes_importar_arquivo', {
+            arquivo: file.name,
+            redesImportadas: redes.length
+        });
         const result = await window.aplicarRedesImportadas(redes);
         window.fecharModalAvancado();
         window.mostrarToast(`${result.adicionados} adicionadas, ${result.atualizados} atualizadas.`);
@@ -1950,7 +2528,7 @@ window.exportarTXT = function() {
 
 window.exportarPDF = function() {
     window.vibrar();
-    if (typeof window.jspdf === 'undefined') return alert("Biblioteca PDF não carregada.");
+    if (typeof window.jspdf === 'undefined') return alert("Biblioteca PDF nao carregada.");
     const doc = new window.jspdf.jsPDF();
     doc.text("Backup de Senhas Wi-Fi", 10, 10);
     window.redesEmMemoria.forEach((r, i) => doc.text(`${i+1}. ${r.ssid}: ${r.senha}`, 10, 20 + (i * 10)));
@@ -2107,9 +2685,33 @@ window.exportarPDF = async function() {
 
 window.compartilharRede = async function(ssid, senha) {
     window.vibrar();
+    const title = 'Wi-Fi: ' + ssid;
+    const text = `Rede: ${ssid}\nSenha: ${senha}`;
+
+    const plugin = typeof window.getPluginExportacaoNativa === 'function' ? window.getPluginExportacaoNativa() : null;
+    if (plugin && typeof plugin.shareText === 'function') {
+        try {
+            await plugin.shareText({ title, text });
+            return;
+        } catch (error) {
+            console.warn('Compartilhamento nativo falhou:', error);
+        }
+    }
+
     if (navigator.share) {
-        navigator.share({ title: 'Wi-Fi: ' + ssid, text: `Rede: ${ssid}\nSenha: ${senha}` }).catch(() => {});
-    } else {
-        window.mostrarToast("Compartilhamento não suportado.");
+        try {
+            await navigator.share({ title, text });
+            return;
+        } catch (error) {
+            console.warn('Compartilhamento web falhou:', error);
+        }
+    }
+
+    try {
+        await navigator.clipboard.writeText(text);
+        window.mostrarToast("Dados copiados para compartilhar.");
+    } catch (error) {
+        window.mostrarToast("Compartilhamento nao suportado.");
     }
 };
+

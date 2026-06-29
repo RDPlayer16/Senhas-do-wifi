@@ -18,7 +18,7 @@
             <div class="brand-icon">📶</div>
             <div>
                 <strong>Wi-Fi Manager Pro</strong>
-                <span id="brandVersionLabel">Versao 2.1 PWA</span>
+                <span id="brandVersionLabel">Versao 2.3 PWA</span>
             </div>
         </div>
         <button onclick="window.mostrarTelaApp('home')"><span class="drawer-icon">⌂</span><span>Inicio</span></button>
@@ -26,7 +26,7 @@
         <button id="drawerWifiAction" onclick="window.abrirModalWifiReal()"><span class="drawer-icon">⌁</span><span>Redes Encontradas</span></button>
         <button onclick="window.abrirMapaGlobal()"><span class="drawer-icon">⌖</span><span>Mapa</span></button>
         <button onclick="window.abrirModalExportar()"><span class="drawer-icon">⇪</span><span>Backup e Exportacao</span></button>
-        <button onclick="window.abrirModalGerenciarRoteador && window.abrirModalGerenciarRoteador()"><span class="drawer-icon">▣</span><span>Gerenciar Roteador</span></button>
+        <button onclick="window.abrirModalGerenciarRoteador && window.abrirModalGerenciarRoteador()"><span class="drawer-icon">&#9635;</span><span>Gerenciar Roteador</span></button>
         <button onclick="window.abrirModalConfiguracoes()"><span class="drawer-icon">⚙</span><span>Configuracoes</span></button>
         <button class="developer-entry" onclick="window.abrirModalAvancado()"><span class="drawer-icon">◆</span><span>Modo Desenvolvedor</span></button>
         <button onclick="window.mostrarToast('Ajuda e suporte serao adicionados em uma proxima versao.')"><span class="drawer-icon">?</span><span>Ajuda e Suporte</span></button>
@@ -52,11 +52,11 @@
                         <strong id="dashboardCurrentSsid">Verificando...</strong>
                         <small id="dashboardCurrentMeta">Carregando dados</small>
                     </div>
-                    <div class="wifi-glyph" aria-label="Wi-Fi">📶</div>
+                    <div class="wifi-glyph" aria-label="Wi-Fi">&#128246;</div>
                 </div>
 
                 <div class="home-current-actions">
-                    <button id="btnHomeManageRouter" onclick="window.abrirModalGerenciarRoteador && window.abrirModalGerenciarRoteador()">▣ Gerenciar roteador</button>
+                    <button id="btnHomeManageRouter" onclick="window.abrirModalGerenciarRoteador && window.abrirModalGerenciarRoteador()">&#9635; Gerenciar roteador</button>
                     <button id="btnHomeSaveCurrent" class="native-only" onclick="window.salvarRedeAtualPeloInicio && window.salvarRedeAtualPeloInicio()">＋ Salvar rede atual</button>
                     <button id="btnHomeNewNetwork" onclick="window.abrirModal(); window.vibrar();">＋ Nova rede</button>
                     <button id="btnHomeRadar" class="pwa-only" data-radar-button onclick="window.buscarSenhasPorPerto()">⌖ Radar</button>
@@ -79,7 +79,10 @@
                         <strong>Redes Salvas</strong>
                         <small id="listSubtitle">Todas as redes cadastradas</small>
                     </div>
-                    <button class="btn-main small-add" onclick="window.abrirModal(); window.vibrar();">＋ Nova</button>
+                    <div class="list-toolbar-actions">
+                        <button id="btnStopRadarInline" class="radar-stop-inline" data-radar-stop-button onclick="window.vibrar(); window.buscarSenhasPorPerto()">Parar Radar</button>
+                        <button class="btn-main small-add" onclick="window.abrirModal(); window.vibrar();">＋ Nova</button>
+                    </div>
                 </div>
                 <div class="search-row">
                     <input type="text" id="searchInput" placeholder="Pesquisar redes..." onkeyup="window.filtrar()">
@@ -98,11 +101,11 @@
 
     <div class="bottom-bar">
         <div class="bottom-bar-content">
-            <button class="bottom-btn active" data-app-nav="home" onclick="window.mostrarTelaApp('home')"><span class="nav-icon">⌂</span><span class="nav-label">Início</span><small>Home</small></button>
-            <button class="bottom-btn" data-app-nav="saved" onclick="window.mostrarTelaApp('saved')"><span class="nav-icon">≋</span><span class="nav-label">Salvas</span><small>Lista</small></button>
-            <button id="bottomWifiAction" class="bottom-btn" onclick="window.abrirModalWifiReal()"><span class="nav-icon">⌁</span><span class="nav-label">Scanner</span><small>Wi-Fi</small></button>
-            <button class="bottom-btn" onclick="window.abrirMapaGlobal(); window.vibrar();"><span class="nav-icon">⌖</span><span class="nav-label">Mapa</span><small>GPS</small></button>
-            <button class="bottom-btn" onclick="window.abrirMenuLateral(); window.vibrar();"><span class="nav-icon">☰</span><span class="nav-label">Mais</span><small>Menu</small></button>
+            <button class="bottom-btn active" data-app-nav="home" onclick="window.mostrarTelaApp('home')"><span class="nav-icon">&#8962;</span><span class="nav-label">Inicio</span><small>Home</small></button>
+            <button class="bottom-btn" data-app-nav="saved" onclick="window.mostrarTelaApp('saved')"><span class="nav-icon">&#9776;</span><span class="nav-label">Salvas</span><small>Lista</small></button>
+            <button id="bottomWifiAction" class="bottom-btn" onclick="window.abrirModalWifiReal()"><span class="nav-icon">&#128246;</span><span class="nav-label">Scanner</span><small>Wi-Fi</small></button>
+            <button class="bottom-btn" onclick="window.abrirMapaGlobal(); window.vibrar();"><span class="nav-icon">&#8982;</span><span class="nav-label">Mapa</span><small>GPS</small></button>
+            <button class="bottom-btn" onclick="window.abrirMenuLateral(); window.vibrar();"><span class="nav-icon">&#9776;</span><span class="nav-label">Mais</span><small>Menu</small></button>
         </div>
     </div>
     
@@ -201,7 +204,6 @@
             <p style="font-size:12px; color:var(--text-muted); margin-top:-10px;">Toque no PIN para ver detalhes da rede.</p>
             <div class="map-action-row">
                 <button class="btn-geo" onclick="window.vibrar(); window.mostrarMinhaLocalizacaoNoMapa()" style="background: #EF4444;">Onde estou? (Redes Proximas)</button>
-                <button id="btnRadar" class="btn-geo" data-radar-button onclick="window.vibrar(); window.buscarSenhasPorPerto()">⌖ Radar</button>
             </div>
             <div id="mapa-global-container" style="flex-grow: 1; width: 100%; border-radius: 8px; border: 1px solid var(--border); min-height: 300px;"></div>
             <div style="display:flex; justify-content: flex-end; margin-top:10px;">
@@ -211,21 +213,81 @@
     </div>
 
     <div id="modalAvancado" class="modal-overlay">
-        <div class="modal-content">
-            <h3>Modo Desenvolvedor</h3>
-            <textarea id="listaInputOculta" placeholder="Cole backup antigo (* NOME: SENHA) ou novo backup com Senha, BSSID e Coordenadas"></textarea>
-            <input type="file" id="backupImportInput" accept=".txt,.pdf,text/plain,application/pdf" style="display:none;" onchange="window.importarArquivoBackup(event)">
-            <button class="btn-scan" onclick="window.vibrar(); document.getElementById('backupImportInput').click();">Selecionar TXT/PDF</button>
-            <div class="divider">MANUTENCAO</div>
-            <button class="btn-reset" onclick="window.vibrar(); window.hardResetPWA()">Atualizar PWA (Limpar Tudo)</button>
-            <div class="divider">LOG</div>
-            <div id="appLogOutput" class="developer-log">Sem eventos registrados.</div>
-            <button class="btn-scan" onclick="window.vibrar(); window.renderizarLogDesenvolvedor()">Atualizar Log</button>
-            <button class="btn-delete" onclick="window.vibrar(); window.limparLogDesenvolvedor()">Limpar Log</button>
+        <div class="modal-content developer-modal">
+            <div class="modal-heading-row">
+                <h3>Modo Desenvolvedor</h3>
+                <button style="background:var(--text-muted)" onclick="window.vibrar(); window.fecharModalAvancado()">Fechar</button>
+            </div>
+
+            <div class="developer-tabs">
+                <button class="active" data-dev-tab-button="import" onclick="window.abrirAbaDesenvolvedor('import')">Importar</button>
+                <button data-dev-tab-button="duplicates" onclick="window.abrirAbaDesenvolvedor('duplicates')">Duplicatas</button>
+                <button data-dev-tab-button="diagnostic" onclick="window.abrirAbaDesenvolvedor('diagnostic')">Firebase</button>
+                <button data-dev-tab-button="history" onclick="window.abrirAbaDesenvolvedor('history')">Historico</button>
+                <button data-dev-tab-button="log" onclick="window.abrirAbaDesenvolvedor('log')">Log</button>
+                <button data-dev-tab-button="maintenance" onclick="window.abrirAbaDesenvolvedor('maintenance')">Manutencao</button>
+            </div>
+
+            <section class="developer-panel active" data-dev-tab-panel="import">
+                <textarea id="listaInputOculta" placeholder="Cole backup antigo (* NOME: SENHA) ou novo backup com Senha, BSSID e Coordenadas"></textarea>
+                <input type="file" id="backupImportInput" accept=".txt,.pdf,text/plain,application/pdf" style="display:none;" onchange="window.importarArquivoBackup(event)">
+                <button class="btn-scan" onclick="window.vibrar(); document.getElementById('backupImportInput').click();">Selecionar TXT/PDF</button>
+                <button class="btn-add" onclick="window.vibrar(); window.importarListaTexto()">Importar texto colado</button>
+                <div class="developer-hint">Antes de importar, o app cria um backup local automatico da lista atual.</div>
+            </section>
+
+            <section class="developer-panel" data-dev-tab-panel="duplicates">
+                <div id="duplicateCleanupOutput" class="developer-log">Toque em analisar para localizar redes duplicadas exatas.</div>
+                <button class="btn-scan" onclick="window.vibrar(); window.analisarDuplicatasBanco()">Analisar Duplicadas Exatas</button>
+                <button class="btn-delete" onclick="window.vibrar(); window.removerDuplicatasBanco()">Remover Duplicadas Exatas</button>
+                <div class="divider">POSSIVEIS DUPLICATAS</div>
+                <div id="possibleDuplicateOutput" class="developer-log">Toque em analisar para ver redes com mesmo SSID e dados diferentes.</div>
+                <button class="btn-scan" onclick="window.vibrar(); window.abrirGerenciamentoPossiveisDuplicatas()">Gerenciar Possiveis Duplicatas</button>
+                <button class="btn-scan" onclick="window.vibrar(); window.exportarPdfPossiveisDuplicatas()">Exportar PDF de Analise</button>
+            </section>
+
+            <section class="developer-panel" data-dev-tab-panel="diagnostic">
+                <div id="firebaseDiagnosticOutput" class="developer-log">Toque em testar para verificar leitura, escrita e exclusao no Firebase.</div>
+                <button class="btn-scan" onclick="window.vibrar(); window.testarDiagnosticoFirebase()">Testar Firebase</button>
+                <button class="btn-scan" onclick="window.vibrar(); window.renderizarEstadoDiagnosticoFirebase()">Atualizar Estado</button>
+            </section>
+
+            <section class="developer-panel" data-dev-tab-panel="history">
+                <input type="text" id="historySearchInput" placeholder="Digite SSID ou ID da rede" oninput="window.renderizarHistoricoRede()">
+                <div id="networkHistoryOutput" class="developer-log">Digite o nome de uma rede para ver o historico registrado.</div>
+            </section>
+
+            <section class="developer-panel" data-dev-tab-panel="log">
+                <div id="appLogOutput" class="developer-log">Sem eventos registrados.</div>
+                <button class="btn-scan" onclick="window.vibrar(); window.renderizarLogDesenvolvedor()">Atualizar Log</button>
+                <button class="btn-delete" onclick="window.vibrar(); window.limparLogDesenvolvedor()">Limpar Log</button>
+            </section>
+
+            <section class="developer-panel" data-dev-tab-panel="maintenance">
+                <div id="maintenanceBackupOutput" class="developer-log">Nenhum backup de manutencao criado nesta instalacao.</div>
+                <button class="btn-scan" onclick="window.vibrar(); window.criarBackupManutencao('manual')">Gerar Backup de Seguranca</button>
+                <button class="btn-scan" onclick="window.vibrar(); window.exportarUltimoBackupManutencao()">Exportar Ultimo Backup JSON</button>
+                <button class="btn-reset" onclick="window.vibrar(); window.hardResetPWA()">Atualizar PWA (Limpar Tudo)</button>
+                <div class="developer-hint">Use o reset apenas quando o cache local estiver inconsistente.</div>
+            </section>
             <div style="display:flex; gap:10px; justify-content: flex-end; margin-top: 15px;">
                 <button style="background:var(--text-muted)" onclick="window.vibrar(); window.fecharModalAvancado()">Fechar</button>
-                <button class="btn-add" onclick="window.vibrar(); window.importarListaTexto()">Importar</button>
             </div>
+        </div>
+    </div>
+
+    <div id="modalGerenciarDuplicatas" class="modal-overlay">
+        <div class="modal-content duplicate-manager-modal">
+            <div class="modal-heading-row">
+                <h3>Gerenciamento de Redes</h3>
+                <button class="wifi-close" onclick="window.vibrar(); window.fecharGerenciamentoPossiveisDuplicatas()">Fechar</button>
+            </div>
+            <div id="duplicateManagerSummary" class="developer-hint">Carregando possiveis duplicatas...</div>
+            <div style="display:flex; gap:8px;">
+                <button class="btn-scan" onclick="window.vibrar(); window.renderizarGerenciamentoPossiveisDuplicatas()">Atualizar Lista</button>
+                <button class="btn-scan" onclick="window.vibrar(); window.exportarPdfPossiveisDuplicatas()">Exportar PDF</button>
+            </div>
+            <div id="duplicateManagerOutput" class="duplicate-manager-list"></div>
         </div>
     </div>
 
@@ -294,7 +356,7 @@
             <input type="file" id="editQrFileInput" accept="image/png, image/jpeg, image/webp" style="display:none;" onchange="window.escanearImagemQR(event, 'editar')">
 
             <input type="text" id="editSSID" placeholder="Nome da Rede (SSID)">
-            <input type="text" id="editSenha" minlength="8" placeholder="Nova senha (minimo 8 caracteres)">
+            <input type="text" id="editSenha" placeholder="Nova Senha">
             <div style="display:flex; justify-content: space-between; margin-top:15px; gap: 10px;">
                 <button class="btn-delete" style="border: 1px solid var(--danger); background: transparent; color: var(--danger);" onclick="window.vibrar(); window.excluirPeloModalEditar()">Apagar</button>
                 <div style="display:flex; gap:10px;">
