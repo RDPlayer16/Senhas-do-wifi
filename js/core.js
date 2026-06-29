@@ -411,6 +411,11 @@ window.aplicarRuntimeLayout = function() {
     document.body.classList.toggle('native-runtime', native);
     document.body.classList.toggle('pwa-runtime', !native);
 
+    const brandVersion = document.getElementById('brandVersionLabel');
+    if (brandVersion) {
+        brandVersion.textContent = native ? 'Versao 2.1' : 'Versao 2.1 PWA';
+    }
+
     const abrirRadar = () => {
         if (typeof window.fecharMenuLateral === 'function') window.fecharMenuLateral();
         if (typeof window.buscarSenhasPorPerto === 'function') {
@@ -418,19 +423,37 @@ window.aplicarRuntimeLayout = function() {
         }
     };
 
+    const abrirWifiReal = () => {
+        if (typeof window.fecharMenuLateral === 'function') window.fecharMenuLateral();
+        if (typeof window.abrirModalWifiReal === 'function') {
+            window.abrirModalWifiReal();
+        }
+    };
+
     const drawerWifi = document.getElementById('drawerWifiAction');
     const bottomWifi = document.getElementById('bottomWifiAction');
 
-    if (bottomWifi) {
+    if (!native && bottomWifi) {
         bottomWifi.innerHTML = '<span class="nav-icon">⌖</span><span class="nav-label">Radar</span><small>GPS</small>';
         bottomWifi.onclick = abrirRadar;
         bottomWifi.setAttribute('data-radar-button', 'true');
+    } else if (bottomWifi) {
+        bottomWifi.innerHTML = '<span class="nav-icon">âŒ</span><span class="nav-label">Scanner</span><small>Wi-Fi</small>';
+        bottomWifi.innerHTML = '<span class="nav-icon">&#8961;</span><span class="nav-label">Scanner</span><small>Wi-Fi</small>';
+        bottomWifi.onclick = abrirWifiReal;
+        bottomWifi.removeAttribute('data-radar-button');
     }
 
-    if (!native && drawerWifi) {
+    if (drawerWifi) {
         drawerWifi.innerHTML = '<span class="drawer-icon">⌖</span><span>Radar</span>';
         drawerWifi.onclick = abrirRadar;
         drawerWifi.setAttribute('data-radar-button', 'true');
+        drawerWifi.innerHTML = '<span class="drawer-icon">&#8982;</span><span>Radar</span>';
+    } else if (drawerWifi) {
+        drawerWifi.innerHTML = '<span class="drawer-icon">âŒ</span><span>Redes Encontradas</span>';
+        drawerWifi.innerHTML = '<span class="drawer-icon">&#8961;</span><span>Redes Encontradas</span>';
+        drawerWifi.onclick = abrirWifiReal;
+        drawerWifi.removeAttribute('data-radar-button');
     }
 };
 
@@ -579,7 +602,14 @@ window.atualizarDashboardLayout = function() {
             if (labelEl) labelEl.textContent = 'Rede Atual';
             ssidEl.textContent = current.ssid;
             metaEl.textContent = `${current.level || 'Sinal n/d'} dBm${current.bssid ? ' · ' + current.bssid : ''}`;
-            if (routerBtn) routerBtn.disabled = false;
+            if (routerBtn) {
+                routerBtn.disabled = false;
+                routerBtn.onclick = () => {
+                    if (typeof window.abrirGerenciadorRoteador === 'function') {
+                        window.abrirGerenciadorRoteador();
+                    }
+                };
+            }
             if (saveBtn) saveBtn.disabled = !!(window.redesEmMemoria || []).find(rede => rede.ssid === current.ssid);
         } else {
             if (labelEl) labelEl.textContent = 'Rede Atual';
