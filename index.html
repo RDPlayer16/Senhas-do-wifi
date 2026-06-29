@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wi-Fi Manager Pro - PWA Resiliente</title>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#4F46E5">
+
+    <link rel="stylesheet" href="./assets/css/style.css">
+    <link rel="stylesheet" href="./js/libs/leaflet.css">
+</head>
+<body>
+
+    <div id="drawerBackdrop" class="drawer-backdrop" onclick="window.fecharMenuLateral()"></div>
+    <aside id="sideDrawer" class="side-drawer">
+        <div class="drawer-brand">
+            <div class="brand-icon">📶</div>
+            <div>
+                <strong>Wi-Fi Manager Pro</strong>
+                <span id="brandVersionLabel">Versao 2.1 PWA</span>
+            </div>
+        </div>
+        <button onclick="window.mostrarTelaApp('home')"><span class="drawer-icon">⌂</span><span>Inicio</span></button>
+        <button onclick="window.mostrarTelaApp('saved')"><span class="drawer-icon">≋</span><span>Redes Salvas</span></button>
+        <button id="drawerWifiAction" onclick="window.abrirModalWifiReal()"><span class="drawer-icon">⌁</span><span>Redes Encontradas</span></button>
+        <button onclick="window.abrirMapaGlobal()"><span class="drawer-icon">⌖</span><span>Mapa</span></button>
+        <button onclick="window.abrirModalExportar()"><span class="drawer-icon">⇪</span><span>Backup e Exportacao</span></button>
+        <button onclick="window.abrirModalGerenciarRoteador && window.abrirModalGerenciarRoteador()"><span class="drawer-icon">▣</span><span>Gerenciar Roteador</span></button>
+        <button onclick="window.abrirModalConfiguracoes()"><span class="drawer-icon">⚙</span><span>Configuracoes</span></button>
+        <button class="developer-entry" onclick="window.abrirModalAvancado()"><span class="drawer-icon">◆</span><span>Modo Desenvolvedor</span></button>
+        <button onclick="window.mostrarToast('Ajuda e suporte serao adicionados em uma proxima versao.')"><span class="drawer-icon">?</span><span>Ajuda e Suporte</span></button>
+        <button onclick="window.mostrarSobreApp && window.mostrarSobreApp()"><span class="drawer-icon">ⓘ</span><span>Sobre o App</span></button>
+    </aside>
+
+    <div class="app-shell">
+        <header class="app-header">
+            <button class="icon-btn" onclick="window.abrirMenuLateral(); window.vibrar();" aria-label="Abrir menu">&#9776;</button>
+            <div class="app-title">
+                <strong>Wi-Fi Manager Pro</strong>
+                <span id="statusContador" class="info-status">Carregando...</span>
+            </div>
+            <button class="icon-btn" onclick="window.vibrar(); window.toggleViewMode()" id="btnViewMode" title="Alternar visualizacao">&#9636;</button>
+            <button class="icon-btn" onclick="window.abrirModalConfiguracoes(); window.vibrar();" title="Configuracoes">&#9881;</button>
+        </header>
+
+        <main class="app-main">
+            <section id="appHomeScreen" class="app-screen dashboard-card active">
+                <div class="current-network-card">
+                    <div>
+                        <span id="dashboardCurrentLabel">Resumo</span>
+                        <strong id="dashboardCurrentSsid">Verificando...</strong>
+                        <small id="dashboardCurrentMeta">Carregando dados</small>
+                    </div>
+                    <div class="wifi-glyph" aria-label="Wi-Fi">📶</div>
+                </div>
+
+                <div class="home-current-actions">
+                    <button id="btnHomeManageRouter" onclick="window.abrirModalGerenciarRoteador && window.abrirModalGerenciarRoteador()">▣ Gerenciar roteador</button>
+                    <button id="btnHomeSaveCurrent" class="native-only" onclick="window.salvarRedeAtualPeloInicio && window.salvarRedeAtualPeloInicio()">＋ Salvar rede atual</button>
+                    <button id="btnHomeNewNetwork" onclick="window.abrirModal(); window.vibrar();">＋ Nova rede</button>
+                    <button id="btnHomeRadar" class="pwa-only" data-radar-button onclick="window.buscarSenhasPorPerto()">⌖ Radar</button>
+                </div>
+
+                <div class="home-search-card">
+                    <div>
+                        <strong>Pesquisa rapida</strong>
+                        <small>Busque uma rede salva sem abrir a lista completa.</small>
+                    </div>
+                    <input type="text" id="homeSearchInput" placeholder="Pesquisar rede salva..." oninput="window.renderizarBuscaInicio()">
+                    <div id="homeSearchResults" class="home-search-results"></div>
+                </div>
+
+            </section>
+
+            <section id="appSavedScreen" class="app-screen list-shell">
+                <div class="list-toolbar">
+                    <div>
+                        <strong>Redes Salvas</strong>
+                        <small id="listSubtitle">Todas as redes cadastradas</small>
+                    </div>
+                    <button class="btn-main small-add" onclick="window.abrirModal(); window.vibrar();">＋ Nova</button>
+                </div>
+                <div class="search-row">
+                    <input type="text" id="searchInput" placeholder="Pesquisar redes..." onkeyup="window.filtrar()">
+                    <button class="icon-btn refresh-btn" onclick="window.renderizarInterface(window.redesEmMemoria || [])" title="Atualizar">↻</button>
+                </div>
+                <div class="filter-tabs">
+                    <button class="filter-tab active" data-filter="all" onclick="window.filtrarPainel('all')">Todas <span id="tabAllCount">0</span></button>
+                    <button class="filter-tab" data-filter="recent" onclick="window.filtrarPainel('recent')">Recentes <span id="tabRecentCount">0</span></button>
+                </div>
+                <div class="content-area"><div id="output"></div></div>
+            </section>
+        </main>
+    </div>
+
+    <button class="floating-add" onclick="window.abrirModal(); window.vibrar();" aria-label="Nova rede">+</button>
+
+    <div class="bottom-bar">
+        <div class="bottom-bar-content">
+            <button class="bottom-btn active" data-app-nav="home" onclick="window.mostrarTelaApp('home')"><span class="nav-icon">⌂</span><span class="nav-label">Início</span><small>Home</small></button>
+            <button class="bottom-btn" data-app-nav="saved" onclick="window.mostrarTelaApp('saved')"><span class="nav-icon">≋</span><span class="nav-label">Salvas</span><small>Lista</small></button>
+            <button id="bottomWifiAction" class="bottom-btn" onclick="window.abrirModalWifiReal()"><span class="nav-icon">⌁</span><span class="nav-label">Scanner</span><small>Wi-Fi</small></button>
+            <button class="bottom-btn" onclick="window.abrirMapaGlobal(); window.vibrar();"><span class="nav-icon">⌖</span><span class="nav-label">Mapa</span><small>GPS</small></button>
+            <button class="bottom-btn" onclick="window.abrirMenuLateral(); window.vibrar();"><span class="nav-icon">☰</span><span class="nav-label">Mais</span><small>Menu</small></button>
+        </div>
+    </div>
+    
+    <div id="toast">Aviso!</div>
+    
+    <div id="toast-undo">
+        <span id="toast-undo-text">Rede apagada.</span>
+        <button class="btn-undo" onclick="window.desfazerExclusao()">Desfazer</button>
+    </div>
+
+    <div id="wifiCurrentPrompt" class="wifi-current-prompt">
+        <div class="wifi-current-prompt-copy">
+            <span>Rede atual nao salva</span>
+            <strong id="wifiCurrentPromptSsid"></strong>
+            <small>Adicione esta rede ao banco para usar a conexao rapida depois.</small>
+        </div>
+        <div class="wifi-current-prompt-actions">
+            <button id="btnWifiCurrentPromptAdd" type="button" class="wifi-current-prompt-add">Adicionar</button>
+            <button id="btnWifiCurrentPromptDismiss" type="button" class="wifi-current-prompt-dismiss">Agora nao</button>
+        </div>
+    </div>
+
+    <div id="modalWifiReal" class="modal-overlay">
+        <div class="modal-content wifi-modal">
+            <div class="wifi-modal-title">
+                <h3>Redes Wi-Fi</h3>
+                <button type="button" class="wifi-close" onclick="window.vibrar(); window.fecharModalWifiReal()">Fechar</button>
+            </div>
+            <div id="wifiCurrentCard" class="wifi-current wifi-current-muted">
+                <div class="wifi-current-copy">
+                    <span>Rede atual</span>
+                    <strong id="wifiCurrentSsid">Verificando...</strong>
+                    <small id="wifiCurrentStatus">Lendo a conexao do Android.</small>
+                </div>
+                <div class="wifi-current-actions">
+                    <button id="btnRouterAdmin" type="button" class="btn-mini wifi-action-secondary" style="display:none;">Gerenciar roteador</button>
+                    <button id="btnWifiCurrentSave" type="button" class="btn-mini wifi-action-secondary" style="display:none;">Salvar atual</button>
+                </div>
+            </div>
+            <div id="wifiNativeResumo" class="wifi-summary">Pronto para escanear.</div>
+            <button id="btnScanWifiNative" class="btn-scan" onclick="window.vibrar(); window.escanearWifiReal()">Atualizar agora</button>
+            <div id="wifiNativeOutput" class="wifi-list"></div>
+        </div>
+    </div>
+
+    <div id="modalExportar" class="modal-overlay">
+        <div class="modal-content" style="max-width: 350px;">
+            <h3 style="margin-bottom: 5px; text-align: center;">Exportar Senhas</h3>
+            <p style="font-size:13px; color:var(--text-muted); text-align: center; margin-bottom: 15px;">Escolha o formato para baixar seu backup:</p>
+            <button onclick="window.vibrar(); window.exportarTXT(); window.fecharModalExportar();" style="background: var(--primary); margin-bottom: 8px;">Arquivo de Texto (.TXT)</button>
+            <button onclick="window.vibrar(); window.exportarPDF(); window.fecharModalExportar();" style="background: #E11D48;">Arquivo PDF (.PDF)</button>
+            <div style="display:flex; justify-content: center; margin-top:10px;">
+                <button style="background:var(--text-muted); width: 100%;" onclick="window.vibrar(); window.fecharModalExportar()">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modalGerenciarRoteadorPwa" class="modal-overlay">
+        <div class="modal-content router-modal">
+            <div class="modal-heading-row">
+                <h3>Gerenciar Roteador</h3>
+                <button class="wifi-close" onclick="window.vibrar(); window.fecharModalGerenciarRoteador()">Fechar</button>
+            </div>
+            <p class="router-helper">No PWA o navegador nao informa o gateway atual. Escolha um IP comum do roteador ou digite outro endereco.</p>
+            <div class="router-grid">
+                <button onclick="window.abrirEnderecoRoteador('192.168.1.1')"><strong>Roteador 1</strong><span>192.168.1.1</span></button>
+                <button onclick="window.abrirEnderecoRoteador('192.168.0.1')"><strong>Roteador 2</strong><span>192.168.0.1</span></button>
+                <button onclick="window.abrirEnderecoRoteador('192.168.7.1')"><strong>Roteador 3</strong><span>192.168.7.1</span></button>
+            </div>
+            <div class="router-custom">
+                <input type="text" id="routerCustomIp" placeholder="Outro IP manual">
+                <button class="btn-scan" onclick="window.abrirEnderecoRoteador(document.getElementById('routerCustomIp').value)">Abrir</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modalMapa" class="modal-overlay">
+        <div class="modal-content" style="max-width: 500px;">
+            <h3 id="tituloModalMapa" style="margin-bottom: 5px;">Localizacao da Rede</h3>
+            <button class="btn-geo" id="btnGpsMapa" onclick="window.vibrar(); window.usarMeuGPSNoMapa()" style="margin-bottom: 8px; width: 100%; background: #0EA5E9;">Usar meu GPS atual</button>
+            <div style="display: flex; gap: 8px; margin-bottom: 8px;">
+                <input type="text" id="inputCoordenadasMapa" placeholder="-23.5505, -46.6333" style="flex-grow: 1; font-size: 13px;">
+                <button class="btn-scan" onclick="window.vibrar(); window.aplicarCoordenadasNoMapa()" style="padding: 10px; min-width: 45px;">OK</button>
+            </div>
+            <div id="mapa-container" style="height: 300px; width: 100%; border-radius: 8px; border: 1px solid var(--border);"></div>
+            <div style="display:flex; gap:10px; justify-content: flex-end; margin-top:10px;">
+                <button style="background:var(--text-muted)" onclick="window.vibrar(); window.fecharMapa()">Cancelar</button>
+                <button class="btn-add" onclick="window.vibrar(); window.salvarLocalizacaoMapa()">Salvar Coordenada</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modalMapaGlobal" class="modal-overlay">
+        <div class="modal-content" style="max-width: 800px; width: 95%; height: 85vh;">
+            <h3>Todas as suas Redes</h3>
+            <p style="font-size:12px; color:var(--text-muted); margin-top:-10px;">Toque no PIN para ver detalhes da rede.</p>
+            <div class="map-action-row">
+                <button class="btn-geo" onclick="window.vibrar(); window.mostrarMinhaLocalizacaoNoMapa()" style="background: #EF4444;">Onde estou? (Redes Proximas)</button>
+                <button id="btnRadar" class="btn-geo" data-radar-button onclick="window.vibrar(); window.buscarSenhasPorPerto()">⌖ Radar</button>
+            </div>
+            <div id="mapa-global-container" style="flex-grow: 1; width: 100%; border-radius: 8px; border: 1px solid var(--border); min-height: 300px;"></div>
+            <div style="display:flex; justify-content: flex-end; margin-top:10px;">
+                <button style="background:var(--text-muted)" onclick="window.vibrar(); window.fecharMapaGlobal()">Fechar Mapa</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modalAvancado" class="modal-overlay">
+        <div class="modal-content">
+            <h3>Modo Desenvolvedor</h3>
+            <textarea id="listaInputOculta" placeholder="Cole backup antigo (* NOME: SENHA) ou novo backup com Senha, BSSID e Coordenadas"></textarea>
+            <input type="file" id="backupImportInput" accept=".txt,.pdf,text/plain,application/pdf" style="display:none;" onchange="window.importarArquivoBackup(event)">
+            <button class="btn-scan" onclick="window.vibrar(); document.getElementById('backupImportInput').click();">Selecionar TXT/PDF</button>
+            <div class="divider">MANUTENCAO</div>
+            <button class="btn-reset" onclick="window.vibrar(); window.hardResetPWA()">Atualizar PWA (Limpar Tudo)</button>
+            <div class="divider">LOG</div>
+            <div id="appLogOutput" class="developer-log">Sem eventos registrados.</div>
+            <button class="btn-scan" onclick="window.vibrar(); window.renderizarLogDesenvolvedor()">Atualizar Log</button>
+            <button class="btn-delete" onclick="window.vibrar(); window.limparLogDesenvolvedor()">Limpar Log</button>
+            <div style="display:flex; gap:10px; justify-content: flex-end; margin-top: 15px;">
+                <button style="background:var(--text-muted)" onclick="window.vibrar(); window.fecharModalAvancado()">Fechar</button>
+                <button class="btn-add" onclick="window.vibrar(); window.importarListaTexto()">Importar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modalConfiguracoes" class="modal-overlay">
+        <div class="modal-content settings-modal">
+            <div class="modal-heading-row">
+                <h3>Configuracoes</h3>
+                <button class="wifi-close" onclick="window.vibrar(); window.fecharModalConfiguracoes()">Fechar</button>
+            </div>
+            <div class="settings-group">
+                <strong>Tema</strong>
+                <div class="segmented-control">
+                    <button data-theme-option="dark" onclick="window.definirTemaApp('dark')">Escuro</button>
+                    <button data-theme-option="light" onclick="window.definirTemaApp('light')">Claro</button>
+                    <button data-theme-option="auto" onclick="window.definirTemaApp('auto')">Automatico</button>
+                </div>
+            </div>
+            <label class="settings-row">
+                <div>
+                    <strong>Modo Desenvolvedor</strong>
+                    <span>Mostra opcoes avancadas de backup, importacao e manutencao.</span>
+                </div>
+                <input type="checkbox" id="toggleDeveloperMode" onchange="window.alternarModoDesenvolvedor(this.checked)">
+            </label>
+            <button class="btn-scan developer-entry" onclick="window.vibrar(); window.abrirModalAvancado()">Abrir ferramentas de desenvolvedor</button>
+        </div>
+    </div>
+
+    <div id="modalNovaRede" class="modal-overlay">
+        <div class="modal-content">
+            <h3>Nova Rede Wi-Fi</h3>
+            <div style="display:flex; gap: 8px; margin-bottom: 5px;">
+                <button class="btn-scan" style="flex: 1; font-size: 13px;" onclick="window.vibrar(); window.abrirScannerCamera('novo');">Escanear QR</button>
+                <button class="btn-scan" style="flex: 1; font-size: 13px; background: #8B5CF6;" onclick="window.vibrar(); document.getElementById('qrFileInput').click();">Galeria</button>
+            </div>
+            
+            <input type="file" id="qrFileInput" accept="image/png, image/jpeg, image/webp" style="display:none;" onchange="window.escanearImagemQR(event, 'novo')">
+            
+            <div class="divider">OU DIGITE MANUALMENTE</div>
+            <input type="text" id="novoSSID" placeholder="Nome da Rede (SSID)" oninput="window.checarDuplicadoModal()">
+            <input type="text" id="novaSenha" minlength="8" placeholder="Senha (minimo 8 caracteres)" oninput="window.checarDuplicadoModal(); window.validarSenhaNovaModal()">
+            
+            <label style="font-size: 14px; display: flex; align-items: center; gap: 8px; margin-top: 5px;" id="containerCheckLocalizacao">
+                <input type="checkbox" id="checkLocalizacao" checked> Usar GPS (Alta Precisao)
+            </label>
+            
+            <input type="text" id="novaCoordenadaManual" placeholder="Ou cole coordenadas: -23.55, -46.63 (Opcional)" style="margin-top: 2px; font-size: 13px;">
+            
+            <div id="msgDuplicadoModal" class="aviso-duplicado"></div>
+            <button id="btnAdicionarGeo" class="btn-geo" style="display:none;" onclick="window.vibrar(); window.atualizarGeoRedeExistente();">Adicionar GPS Agora</button>
+            <div style="display:flex; gap:10px; justify-content: flex-end; margin-top:10px;">
+                <button style="background:var(--text-muted)" onclick="window.vibrar(); window.fecharModal()">Cancelar</button>
+                <button id="btnSalvarModal" class="btn-add" onclick="window.vibrar(); window.salvarRedeLocal()">Salvar</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="modalEditarRede" class="modal-overlay">
+        <div class="modal-content">
+            <h3>Editar Rede</h3>
+            
+            <div style="display:flex; gap: 8px; margin-bottom: 10px;">
+                <button class="btn-scan" style="flex: 1; font-size: 13px;" onclick="window.vibrar(); window.abrirScannerCamera('editar');">Escanear QR</button>
+                <button class="btn-scan" style="flex: 1; font-size: 13px; background: #8B5CF6;" onclick="window.vibrar(); document.getElementById('editQrFileInput').click();">Galeria</button>
+            </div>
+            <input type="file" id="editQrFileInput" accept="image/png, image/jpeg, image/webp" style="display:none;" onchange="window.escanearImagemQR(event, 'editar')">
+
+            <input type="text" id="editSSID" placeholder="Nome da Rede (SSID)">
+            <input type="text" id="editSenha" minlength="8" placeholder="Nova senha (minimo 8 caracteres)">
+            <div style="display:flex; justify-content: space-between; margin-top:15px; gap: 10px;">
+                <button class="btn-delete" style="border: 1px solid var(--danger); background: transparent; color: var(--danger);" onclick="window.vibrar(); window.excluirPeloModalEditar()">Apagar</button>
+                <div style="display:flex; gap:10px;">
+                    <button style="background:var(--text-muted)" onclick="window.vibrar(); window.fecharModalEditar()">Cancelar</button>
+                    <button class="btn-add" onclick="window.vibrar(); window.salvarEdicaoRede()">Salvar</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="modalScanner" class="modal-overlay">
+        <div class="modal-content">
+            <div id="reader"></div>
+            <button style="background:var(--danger); margin-top:10px;" onclick="window.vibrar(); window.fecharScanner(true);">Voltar</button>
+        </div>
+    </div>
+
+    <!-- Scripts das Bibliotecas Locais (Para funcionamento Offline) -->
+    <script src="./js/libs/leaflet.js"></script>
+    <script src="./js/libs/html5-qrcode.min.js"></script>
+    <script src="./js/libs/qrcode-modern.js"></script>
+    <script src="./js/libs/qrcode.min.js"></script>
+    <script src="./js/libs/jspdf.umd.min.js"></script>
+
+    <!-- Motores do Aplicativo -->
+    <script src="./js/map-engine.js"></script>
+    <script src="./js/qr-engine.js"></script>
+    <script src="./js/core.js"></script>
+    <script src="./js/native-wifi.js"></script>
+
+    <!-- Sincronizacao Firebase (Ignorado em modo offline) -->
+    <script type="module" src="./js/firebase-sync.js"></script>
+
+    <script>
+      // Registro do Service Worker para suporte Offline PWA
+      if ('serviceWorker' in navigator) { 
+          window.addEventListener('load', () => {
+              navigator.serviceWorker.register('./sw.js', { scope: './' }).then(reg => {
+                  console.log("PWA Protegido: Offline Ready");
+              }).catch(err => {
+                  console.error("Erro ao registrar Service Worker:", err);
+              });
+          });
+      }
+    </script>
+</body>
+</html>
