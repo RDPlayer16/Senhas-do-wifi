@@ -7,10 +7,6 @@ window.APP_LOG_DEVICE_KEY = 'wifi_pro_event_log_device_v1';
 window.APP_LOG_MIGRATED_KEY = 'wifi_pro_event_log_migrated_v1';
 window.MAINTENANCE_BACKUP_KEY = 'wifi_pro_maintenance_backup_v1';
 window.APP_LOG_LIMIT = 300;
-window.APP_VERSION = '3.0';
-window.APP_VERSION_LABEL = 'Wi-Fi Manager Pro 3.0';
-window.APP_ANDROID_DOWNLOAD_URL = '';
-window.APP_UPDATE_URL = '';
 window.redesEmMemoria = [];
 window.mostrandoApenasProximas = false;
 window.radarWatchId = null;
@@ -23,7 +19,6 @@ window.novaRedeWifiSugerida = null;
 window.novaRedeConectarAposCadastro = false;
 window.scanTarget = 'novo'; 
 window.appCurrentView = localStorage.getItem('wifi_pro_view_screen_v1') || 'home';
-if (!['home', 'saved', 'admin'].includes(window.appCurrentView)) window.appCurrentView = 'home';
 window.appCurrentFilter = localStorage.getItem('wifi_pro_filter_v1') || 'all';
 if (!['all', 'recent'].includes(window.appCurrentFilter)) window.appCurrentFilter = 'all';
 const storedThemeMode = localStorage.getItem('wifi_pro_theme_v1');
@@ -31,26 +26,7 @@ window.appThemeMode = ['dark', 'light', 'auto'].includes(storedThemeMode) ? stor
 window.appDeveloperMode = localStorage.getItem('wifi_pro_developer_v1') === 'true';
 
 window.isNativeRuntime = function() {
-    if (!window.Capacitor) return false;
-    if (typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform()) return true;
-    if (typeof window.Capacitor.getPlatform === 'function') {
-        const platform = window.Capacitor.getPlatform();
-        return platform && platform !== 'web' && String(location.protocol || '').startsWith('capacitor');
-    }
-    return false;
-};
-
-window.getAppPlatformLabel = function() {
-    return window.isNativeRuntime() ? 'APK' : 'PWA';
-};
-
-window.atualizarRotulosVersaoApp = function() {
-    const platform = window.getAppPlatformLabel();
-    const versionText = `Versao ${window.APP_VERSION} ${platform}`;
-    const brand = document.getElementById('brandVersionLabel');
-    if (brand) brand.textContent = versionText;
-    document.title = `Wi-Fi Manager Pro ${platform}`;
-    return versionText;
+    return !!(window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform());
 };
 
 window.criarMetadadosCadastroRede = function(timestamp = Date.now()) {
@@ -723,15 +699,6 @@ window.prepararMigracaoLogGlobal = function() {
 
 window.registrarLogEvento = function(tipo, mensagem, dados = {}) {
     const timestamp = Number(dados.timestamp || dados.createdAt) || Date.now();
-    const perfilAuth = typeof window.getWifiAuthProfile === 'function' ? window.getWifiAuthProfile() : null;
-    const autorizacaoAuth = typeof window.getWifiAuthorization === 'function' ? window.getWifiAuthorization() : null;
-    const usuario = perfilAuth ? {
-        uid: perfilAuth.uid || null,
-        email: perfilAuth.email || null,
-        displayName: perfilAuth.displayName || perfilAuth.email || 'Usuario',
-        role: autorizacaoAuth?.role || perfilAuth.role || 'user'
-    } : null;
-    const dadosEvento = usuario && !dados.usuario ? { ...dados, usuario } : dados;
     const evento = {
         id: 'log_' + timestamp + '_' + Math.random().toString(36).slice(2, 8),
         tipo,
@@ -741,11 +708,7 @@ window.registrarLogEvento = function(tipo, mensagem, dados = {}) {
         dataLocal: new Date(timestamp).toLocaleString('pt-BR'),
         deviceId: window.obterLogDeviceId(),
         runtime: window.isNativeRuntime() ? 'apk' : 'pwa',
-        userUid: usuario?.uid || null,
-        userEmail: usuario?.email || null,
-        userRole: usuario?.role || null,
-        usuario,
-        dados: dadosEvento
+        dados
     };
     window.mesclarLogEventos([evento]);
     window.adicionarLogPendente(evento);
@@ -809,7 +772,7 @@ window.renderizarLogDesenvolvedor = function() {
     });
 };
 
-window.carregarLogAdmin = async function() {
+window.carregarLogDesenvolvedor = async function() {
     const out = document.getElementById('appLogOutput');
     if (out) {
         out.innerHTML = '<div class="developer-log-item"><strong>Carregando logs...</strong><span>Buscando apenas os eventos recentes.</span></div>';
@@ -893,43 +856,22 @@ window.definirTemaApp = function(theme) {
     window.aplicarTemaApp();
 };
 
-window.usuarioAtualEhAdmin = function() {
-    const authorization = typeof window.getWifiAuthorization === 'function' ? window.getWifiAuthorization() : null;
-    return authorization?.role === 'admin' && authorization?.active !== false;
-};
-
-window.aplicarPermissoesInterface = function() {
-    const isAdmin = window.usuarioAtualEhAdmin();
-    document.body.classList.toggle('admin-mode', isAdmin);
-    document.body.classList.toggle('developer-mode', isAdmin);
-    if (!isAdmin && window.appCurrentView === 'admin') {
-        window.mostrarTelaApp('home');
-    }
-};
-
 window.aplicarModoDesenvolvedor = function() {
-    window.aplicarPermissoesInterface();
+    document.body.classList.toggle('developer-mode', !!window.appDeveloperMode);
+    const toggle = document.getElementById('toggleDeveloperMode');
+    if (toggle) toggle.checked = !!window.appDeveloperMode;
 };
 
-window.alternarModoDesenvolvedor = function() {
-    window.aplicarPermissoesInterface();
-};
-
-window.abrirFerramentaAdmin = function(tab = 'diagnostic') {
-    if (!window.usuarioAtualEhAdmin()) {
-        window.mostrarToast('Area disponivel apenas para administrador.');
-        return;
-    }
-    window.fecharMenuLateral();
-    window.mostrarTelaApp('admin');
-    setTimeout(() => window.abrirPainelFerramentaAdmin(tab), 0);
+window.alternarModoDesenvolvedor = function(enabled) {
+    window.appDeveloperMode = !!enabled;
+    localStorage.setItem('wifi_pro_developer_v1', String(window.appDeveloperMode));
+    window.aplicarModoDesenvolvedor();
 };
 
 window.aplicarRuntimeLayout = function() {
     const native = window.isNativeRuntime();
     document.body.classList.toggle('native-runtime', native);
     document.body.classList.toggle('pwa-runtime', !native);
-    window.atualizarRotulosVersaoApp();
 
     const abrirRadar = () => {
         if (typeof window.fecharMenuLateral === 'function') window.fecharMenuLateral();
@@ -938,10 +880,12 @@ window.aplicarRuntimeLayout = function() {
         }
     };
 
+    const drawerWifi = document.getElementById('drawerWifiAction');
     const bottomWifi = document.getElementById('bottomWifiAction');
     const homeRouter = document.getElementById('btnHomeManageRouter');
 
-    if (homeRouter) {
+    if (homeRouter && !native) {
+        homeRouter.disabled = false;
         homeRouter.onclick = () => {
             if (typeof window.abrirModalGerenciarRoteador === 'function') {
                 window.abrirModalGerenciarRoteador();
@@ -961,6 +905,11 @@ window.aplicarRuntimeLayout = function() {
         bottomWifi.setAttribute('data-radar-button', 'true');
     }
 
+    if (drawerWifi) {
+        drawerWifi.innerHTML = '<span class="drawer-icon">&#8982;</span><span>Radar</span>';
+        drawerWifi.onclick = abrirRadar;
+        drawerWifi.setAttribute('data-radar-button', 'true');
+    }
 };
 
 window.abrirModalConfiguracoes = function() {
@@ -987,29 +936,17 @@ window.fecharMenuLateral = function() {
 };
 
 window.mostrarTelaApp = function(view = 'home') {
-    let nextView = ['home', 'saved', 'admin'].includes(view) ? view : 'home';
-    const authorization = typeof window.getWifiAuthorization === 'function' ? window.getWifiAuthorization() : null;
-    const isAdmin = authorization?.role === 'admin' && authorization?.active !== false;
-    if (nextView === 'admin' && !isAdmin) {
-        if (typeof window.mostrarToast === 'function') window.mostrarToast('Area disponivel apenas para administrador.');
-        nextView = 'home';
-    }
+    const nextView = view === 'saved' ? 'saved' : 'home';
     window.appCurrentView = nextView;
     localStorage.setItem('wifi_pro_view_screen_v1', nextView);
     document.body.classList.toggle('view-home', nextView === 'home');
     document.body.classList.toggle('view-saved', nextView === 'saved');
-    document.body.classList.toggle('view-admin', nextView === 'admin');
 
     document.querySelectorAll('.app-screen').forEach(section => {
         section.classList.remove('active');
     });
 
-    const targetId = nextView === 'admin'
-        ? 'appAdminScreen'
-        : nextView === 'saved'
-            ? 'appSavedScreen'
-            : 'appHomeScreen';
-    const target = document.getElementById(targetId);
+    const target = document.getElementById(nextView === 'saved' ? 'appSavedScreen' : 'appHomeScreen');
     if (target) target.classList.add('active');
 
     document.querySelectorAll('[data-app-nav]').forEach(button => {
@@ -1017,9 +954,7 @@ window.mostrarTelaApp = function(view = 'home') {
     });
 
     window.fecharMenuLateral();
-    if (nextView === 'admin') {
-        if (typeof window.atualizarPainelAdmin === 'function') window.atualizarPainelAdmin();
-    } else if (nextView === 'saved') {
+    if (nextView === 'saved') {
         window.renderizarInterface(window.redesEmMemoria || []);
     } else {
         window.atualizarDashboardLayout();
@@ -1239,77 +1174,14 @@ window.mostrarToast = function(m) {
 };
 
 window.mostrarSobreApp = function() {
-    let modal = document.getElementById('modalSobreApp');
-    if (!modal) {
-        modal = document.createElement('div');
-        modal.id = 'modalSobreApp';
-        modal.className = 'modal-overlay';
-        modal.innerHTML = `
-            <div class="modal-content about-modal">
-                <div class="modal-heading-row">
-                    <h3>Sobre o App</h3>
-                    <button class="wifi-close" onclick="window.fecharSobreApp()">Fechar</button>
-                </div>
-                <div class="about-app-card">
-                    <div class="about-app-icon">&#128246;</div>
-                    <div>
-                        <strong>Wi-Fi Manager Pro</strong>
-                        <span id="aboutVersionLabel">Carregando...</span>
-                    </div>
-                </div>
-                <div class="about-info-list">
-                    <div><span>Plataforma</span><strong id="aboutPlatformLabel">-</strong></div>
-                    <div><span>Conta</span><strong id="aboutAccountLabel">-</strong></div>
-                    <div><span>Acesso</span><strong id="aboutAccessLabel">-</strong></div>
-                    <div><span>Banco local</span><strong id="aboutLocalCountLabel">-</strong></div>
-                    <div><span>Sincronizacao</span><strong id="aboutSyncLabel">-</strong></div>
-                </div>
-                <p class="about-credit">Desenvolvido por Rai Dias.</p>
-            </div>
-        `;
-        document.body.appendChild(modal);
-    }
-
-    const profile = typeof window.getWifiAuthProfile === 'function' ? window.getWifiAuthProfile() : null;
-    const authorization = typeof window.getWifiAuthorization === 'function' ? window.getWifiAuthorization() : null;
-    const sync = typeof window.getFirebaseDiagnosticState === 'function' ? window.getFirebaseDiagnosticState() : {};
-    const lastSync = sync.lastSyncAt ? new Date(sync.lastSyncAt).toLocaleString('pt-BR') : 'Sem sincronizacao nesta sessao';
-    const setText = (id, value) => {
-        const el = document.getElementById(id);
-        if (el) el.textContent = String(value);
-    };
-    setText('aboutVersionLabel', `${window.APP_VERSION_LABEL} - ${window.getAppPlatformLabel()}`);
-    setText('aboutPlatformLabel', window.getAppPlatformLabel());
-    setText('aboutAccountLabel', profile?.email || 'Conta local/offline');
-    setText('aboutAccessLabel', authorization?.role === 'admin' ? 'Administrador' : (authorization?.active ? 'Autorizado' : 'Pendente'));
-    setText('aboutLocalCountLabel', `${(window.redesEmMemoria || []).length} rede(s)`);
-    setText('aboutSyncLabel', lastSync);
-    modal.style.display = 'flex';
+    window.mostrarToast('Wi-Fi Manager Pro\nDesenvolvido por Rai Dias');
     if (typeof window.fecharMenuLateral === 'function') window.fecharMenuLateral();
-};
-
-window.fecharSobreApp = function() {
-    const modal = document.getElementById('modalSobreApp');
-    if (modal) modal.style.display = 'none';
-};
-
-window.abrirModalGerenciarRoteadorWeb = function() {
-    if (typeof window.fecharMenuLateral === 'function') window.fecharMenuLateral();
-    const modal = document.getElementById('modalGerenciarRoteadorPwa');
-    if (modal) modal.style.display = 'flex';
 };
 
 window.abrirModalGerenciarRoteador = function() {
     if (typeof window.fecharMenuLateral === 'function') window.fecharMenuLateral();
-    if (window.isNativeRuntime()) {
-        if (typeof window.abrirGerenciadorRoteador === 'function') {
-            window.abrirGerenciadorRoteador();
-            return;
-        }
-        window.mostrarToast('Gerenciador nativo do roteador ainda nao carregou.');
-        return;
-    }
-    window.abrirModalGerenciarRoteadorWeb();
+    const modal = document.getElementById('modalGerenciarRoteadorPwa');
+    if (modal) modal.style.display = 'flex';
 };
 
 window.fecharModalGerenciarRoteador = function() {
@@ -1387,60 +1259,22 @@ window.filtrar = function() {
     document.querySelectorAll('.card').forEach(c => c.style.display = c.dataset.nomeRede.includes(v) ? 'flex' : 'none'); 
 };
 
-const adminToolLabels = {
-    diagnostic: ['Firebase', 'Teste de leitura, escrita e exclusao do banco remoto.'],
-    log: ['Logs', 'Historico de eventos registrados pelo app.'],
-    maintenance: ['Manutencao', 'Backups, cache e limpeza pesada do PWA.'],
-    duplicates: ['Duplicatas', 'Analise e limpeza de redes repetidas.'],
-    import: ['Importar', 'Restauracao de backup antigo ou novo.'],
-    history: ['Historico', 'Consulta de eventos por rede salva.']
-};
-
-window.abrirPainelFerramentaAdmin = function(tab = 'diagnostic') {
-    if (!window.usuarioAtualEhAdmin()) {
-        window.mostrarToast('Area disponivel apenas para administrador.');
-        return;
-    }
-
-    const selectedTab = adminToolLabels[tab] ? tab : 'diagnostic';
-    const panel = document.getElementById('adminToolPanel');
-    const title = document.getElementById('adminToolTitle');
-    const subtitle = document.getElementById('adminToolSubtitle');
-    if (panel) panel.classList.add('open');
-    if (title) title.textContent = adminToolLabels[selectedTab][0];
-    if (subtitle) subtitle.textContent = adminToolLabels[selectedTab][1];
-
-    document.querySelectorAll('[data-admin-tool-button]').forEach(btn => {
-        btn.classList.toggle('active', btn.dataset.adminToolButton === selectedTab);
+window.abrirAbaDesenvolvedor = function(tab = 'import') {
+    document.querySelectorAll('[data-dev-tab-button]').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.devTabButton === tab);
     });
-    document.querySelectorAll('[data-admin-tool-panel]').forEach(toolPanel => {
-        toolPanel.classList.toggle('active', toolPanel.dataset.adminToolPanel === selectedTab);
+    document.querySelectorAll('[data-dev-tab-panel]').forEach(panel => {
+        panel.classList.toggle('active', panel.dataset.devTabPanel === tab);
     });
 
-    if (selectedTab === 'log') window.renderizarLogDesenvolvedor();
-    if (selectedTab === 'duplicates') {
+    if (tab === 'log') window.renderizarLogDesenvolvedor();
+    if (tab === 'duplicates') {
         window.renderizarDuplicatasBanco();
         window.renderizarPossiveisDuplicatasBanco();
     }
-    if (selectedTab === 'diagnostic') window.renderizarEstadoDiagnosticoFirebase();
-    if (selectedTab === 'history') window.renderizarHistoricoRede();
-    if (selectedTab === 'maintenance') window.renderizarBackupManutencao();
-    if (selectedTab === 'import') {
-        const inputOculta = document.getElementById('listaInputOculta');
-        if (inputOculta) {
-            inputOculta.value = (window.redesEmMemoria || []).map(r => `* ${r.ssid}: ${r.senha}`).join('\n\n');
-        }
-    }
-};
-
-window.fecharPainelFerramentaAdmin = function() {
-    const panel = document.getElementById('adminToolPanel');
-    if (panel) panel.classList.remove('open');
-    document.querySelectorAll('[data-admin-tool-button]').forEach(btn => btn.classList.remove('active'));
-};
-
-window.abrirAbaDesenvolvedor = function(tab = 'diagnostic') {
-    window.abrirPainelFerramentaAdmin(tab);
+    if (tab === 'diagnostic') window.renderizarEstadoDiagnosticoFirebase();
+    if (tab === 'history') window.renderizarHistoricoRede();
+    if (tab === 'maintenance') window.renderizarBackupManutencao();
 };
 
 window.renderizarEstadoDiagnosticoFirebase = function(resultado = null) {
@@ -1520,24 +1354,18 @@ window.renderizarHistoricoRede = function() {
     });
 };
 
-window.abrirFerramentasAdmin = function() {
+window.abrirModalAvancado = function() { 
     window.fecharMenuLateral();
-    if (typeof window.fecharModalConfiguracoes === 'function') window.fecharModalConfiguracoes();
-    if (!window.usuarioAtualEhAdmin()) {
-        window.mostrarToast('Area disponivel apenas para administrador.');
-        return;
-    }
-    window.mostrarTelaApp('admin');
-    setTimeout(() => window.abrirPainelFerramentaAdmin('diagnostic'), 0);
+    document.getElementById('modalAvancado').style.display = 'flex'; 
+    const inputOculta = document.getElementById('listaInputOculta');
+    inputOculta.value = window.redesEmMemoria.map(r => `* ${r.ssid}: ${r.senha}`).join('\n\n');
+    window.renderizarLogDesenvolvedor();
+    window.renderizarBackupManutencao();
+    window.renderizarEstadoDiagnosticoFirebase();
+    window.abrirAbaDesenvolvedor('import');
 };
 
-window.abrirModalAvancado = window.abrirFerramentasAdmin;
-
-window.fecharModalAvancado = function() {
-    const modal = document.getElementById('modalAvancado');
-    if (modal) modal.style.display = 'none';
-    window.fecharPainelFerramentaAdmin();
-};
+window.fecharModalAvancado = function() { document.getElementById('modalAvancado').style.display = 'none'; };
 
 window.copy = function(t) { 
     window.vibrar(); 
@@ -1667,229 +1495,6 @@ window.hardResetPWA = async function() {
     window.location.reload(true);
 };
 
-window.obterUrlFirebaseRestApp = async function(path) {
-    const config = window.WIFI_FIREBASE_CONFIG || {};
-    const databaseURL = String(config.databaseURL || '').replace(/\/+$/, '');
-    if (!databaseURL) return null;
-    const cleanPath = String(path || '').replace(/^\/+/, '');
-    let url = `${databaseURL}/${cleanPath}.json`;
-    if (typeof window.getWifiAuthToken === 'function') {
-        const token = await window.getWifiAuthToken(false);
-        if (token) url += `?auth=${encodeURIComponent(token)}`;
-    }
-    return url;
-};
-
-window.obterConfiguracaoAppRemota = async function(force = false) {
-    const cacheKey = 'wifi_pro_app_config_cache_v1';
-    if (!force) {
-        try {
-            const cached = JSON.parse(localStorage.getItem(cacheKey) || 'null');
-            if (cached && Date.now() - Number(cached.cachedAt || 0) < 5 * 60 * 1000) return cached.data || {};
-        } catch (error) {}
-    }
-
-    const url = await window.obterUrlFirebaseRestApp('app_config');
-    if (!url || !navigator.onLine) return {};
-    const response = await fetch(url, { cache: 'no-store' });
-    if (!response.ok) throw new Error('Nao foi possivel checar a versao.');
-    const data = await response.json();
-    localStorage.setItem(cacheKey, JSON.stringify({ cachedAt: Date.now(), data: data || {} }));
-    return data || {};
-};
-
-window.compararVersaoApp = function(a, b) {
-    const pa = String(a || '0').split('.').map(n => parseInt(n, 10) || 0);
-    const pb = String(b || '0').split('.').map(n => parseInt(n, 10) || 0);
-    const length = Math.max(pa.length, pb.length);
-    for (let i = 0; i < length; i++) {
-        if ((pa[i] || 0) > (pb[i] || 0)) return 1;
-        if ((pa[i] || 0) < (pb[i] || 0)) return -1;
-    }
-    return 0;
-};
-
-window.obterLinkAtualizacaoApp = function(config = null) {
-    const source = config || window.ultimoAppConfigRemoto || {};
-    const native = window.isNativeRuntime();
-    if (native) {
-        return source.apkUrl || source.androidDownloadUrl || source.androidUrl || source.updateUrl || window.APP_UPDATE_URL || window.APP_ANDROID_DOWNLOAD_URL || '';
-    }
-    return source.pwaUrl || source.webUrl || source.updateUrl || window.APP_UPDATE_URL || '';
-};
-
-window.obterLinkAndroidApp = function(config = null) {
-    const source = config || window.ultimoAppConfigRemoto || {};
-    return source.androidDownloadUrl || source.apkUrl || source.androidUrl || window.APP_ANDROID_DOWNLOAD_URL || source.updateUrl || '';
-};
-
-window.abrirUrlAtualizacao = function(url, fallbackMessage = 'Link ainda nao configurado.') {
-    if (!url) {
-        window.mostrarToast(fallbackMessage);
-        return false;
-    }
-    window.open(url, '_blank', 'noopener,noreferrer');
-    return true;
-};
-
-window.abrirLinkAppAndroid = async function() {
-    let config = window.ultimoAppConfigRemoto || null;
-    if (!config && navigator.onLine) {
-        try { config = await window.obterConfiguracaoAppRemota(true); } catch (error) {}
-    }
-    window.abrirUrlAtualizacao(window.obterLinkAndroidApp(config), 'Link do APK ainda nao configurado.');
-};
-
-window.abrirLinkAtualizacaoApp = async function() {
-    let config = window.ultimoAppConfigRemoto || null;
-    if (!config && navigator.onLine) {
-        try { config = await window.obterConfiguracaoAppRemota(true); } catch (error) {}
-    }
-    window.abrirUrlAtualizacao(window.obterLinkAtualizacaoApp(config), 'Link de atualizacao ainda nao configurado.');
-};
-
-window.verificarVersaoApp = async function(showToast = true) {
-    try {
-        const config = await window.obterConfiguracaoAppRemota(true);
-        window.ultimoAppConfigRemoto = config;
-        const platform = window.getAppPlatformLabel().toLowerCase();
-        const latest = platform === 'apk'
-            ? (config.latestApkVersion || config.latestAndroidVersion || config.latestVersion || config.version)
-            : (config.latestPwaVersion || config.latestWebVersion || config.latestVersion || config.version);
-        const latestVersion = latest || window.APP_VERSION;
-        const minVersion = config.minSupportedVersion || config.minimumVersion || null;
-        const hasUpdate = window.compararVersaoApp(latestVersion, window.APP_VERSION) > 0;
-        const blocked = minVersion ? window.compararVersaoApp(window.APP_VERSION, minVersion) < 0 : false;
-        const message = blocked
-            ? 'Esta versao precisa ser atualizada.'
-            : hasUpdate
-                ? `Nova versao ${latestVersion} disponivel.`
-                : `Voce esta na versao ${window.APP_VERSION}.`;
-        if (showToast) window.mostrarToast(message);
-        if ((blocked || hasUpdate) && config.openUpdateOnCheck === true) {
-            window.abrirLinkAtualizacaoApp();
-        }
-        return { ok: true, hasUpdate, blocked, latestVersion, minVersion, config };
-    } catch (error) {
-        if (showToast) window.mostrarToast('Nao foi possivel checar a versao agora.');
-        return { ok: false, error };
-    }
-};
-
-window.atualizarDadosDoApp = async function() {
-    window.fecharMenuLateral();
-    window.mostrarToast('Atualizando...');
-    try {
-        if (navigator.onLine && typeof window.verificarAutorizacaoWifi === 'function') {
-            await window.verificarAutorizacaoWifi({ force: true, reason: 'drawer_refresh' });
-        }
-        if (navigator.onLine && typeof window.carregarBancoFirebaseRest === 'function' && typeof window.podeSincronizarFirebaseComAuth === 'function' && window.podeSincronizarFirebaseComAuth()) {
-            await window.carregarBancoFirebaseRest('drawer_refresh');
-        } else if (typeof window.renderizarInterface === 'function') {
-            window.renderizarInterface(window.redesEmMemoria || []);
-        }
-        if ('serviceWorker' in navigator) {
-            const registration = await navigator.serviceWorker.getRegistration();
-            if (registration) await registration.update();
-        }
-        window.verificarVersaoApp(false);
-        window.mostrarToast('Atualizado.');
-    } catch (error) {
-        console.warn('Falha ao atualizar dados.', error);
-        window.mostrarToast('Nao foi possivel atualizar agora.');
-    }
-};
-
-window.limparCachePwa = async function() {
-    if (!confirm('Limpar o cache do PWA e recarregar o app? Seus dados locais serao mantidos.')) return;
-    try {
-        if ('caches' in window) {
-            const cacheNames = await caches.keys();
-            await Promise.all(cacheNames.map(name => caches.delete(name)));
-        }
-        if ('serviceWorker' in navigator) {
-            const registrations = await navigator.serviceWorker.getRegistrations();
-            await Promise.all(registrations.map(registration => registration.update()));
-        }
-        window.mostrarToast('Cache limpo.');
-        setTimeout(() => window.location.reload(), 500);
-    } catch (error) {
-        console.warn('Falha ao limpar cache PWA.', error);
-        window.mostrarToast('Nao foi possivel limpar o cache.');
-    }
-};
-
-window.apagarBancoIndexedDBApp = async function() {
-    try {
-        const db = await window.initDB();
-        if (db.objectStoreNames.contains('redes')) {
-            const tx = db.transaction('redes', 'readwrite');
-            tx.objectStore('redes').clear();
-            await new Promise(resolve => {
-                tx.oncomplete = resolve;
-                tx.onerror = resolve;
-                tx.onabort = resolve;
-            });
-        }
-        db.close();
-    } catch (error) {}
-
-    try {
-        await new Promise(resolve => {
-            const request = indexedDB.deleteDatabase('WiFiManagerDB_v9');
-            request.onsuccess = resolve;
-            request.onerror = resolve;
-            request.onblocked = resolve;
-        });
-    } catch (error) {}
-};
-
-window.limparDadosLocaisPorRevogacao = async function(meta = {}) {
-    try {
-        if (window.deleteTimeout) clearTimeout(window.deleteTimeout);
-    } catch (error) {}
-
-    window.redesEmMemoria = [];
-    window.redePendenteExclusao = null;
-    window.redeEditandoAtual = null;
-    window.redeDuplicadaAtual = null;
-
-    await window.apagarBancoIndexedDBApp();
-
-    try {
-        localStorage.clear();
-        sessionStorage.clear();
-    } catch (error) {}
-
-    try {
-        if ('caches' in window) {
-            const cacheNames = await caches.keys();
-            await Promise.all(
-                cacheNames
-                    .filter(name => String(name).includes('wifi-manager'))
-                    .map(name => caches.delete(name))
-            );
-        }
-    } catch (error) {}
-
-    if (typeof window.renderizarInterface === 'function') {
-        window.renderizarInterface([]);
-    }
-    if (typeof window.renderizarBuscaInicio === 'function') {
-        window.renderizarBuscaInicio();
-    }
-    if (typeof window.atualizarDashboardLayout === 'function') {
-        window.atualizarDashboardLayout();
-    }
-    if (typeof window.atualizarContador === 'function') {
-        window.atualizarContador('bloqueado');
-    }
-    if (typeof window.mostrarToast === 'function') {
-        window.mostrarToast('Acesso bloqueado. Dados locais removidos.');
-    }
-    console.warn('Acesso revogado. Dados locais removidos.', meta);
-};
-
 // BANCO DE DADOS LOCAL (IndexedDB)
 window.initDB = function() {
     return new Promise((resolve, reject) => {
@@ -2013,10 +1618,6 @@ window.atualizarContador = function(modo, totalNuvem = 0) {
 
     if (modo === 'offline') {
         el.innerHTML = `<span style="color:var(--text-muted);">Offline (${total})</span> ${avisoPendentes}`;
-    } else if (modo === 'auth') {
-        el.innerHTML = `<span style="color:var(--warning);">Login pendente</span> ${avisoPendentes}`;
-    } else if (modo === 'bloqueado') {
-        el.innerHTML = `<span style="color:var(--danger);">Acesso bloqueado</span>`;
     } else if (modo === 'local') {
         el.innerHTML = `<span style="color:var(--success);">Local (${total})</span> ${avisoPendentes}`;
     } else if (modo === 'sincronizando') {
@@ -2027,7 +1628,6 @@ window.atualizarContador = function(modo, totalNuvem = 0) {
 };
 
 window.sincronizarPendentes = async function() {
-    if (typeof window.podeSincronizarFirebaseComAuth === 'function' && !window.podeSincronizarFirebaseComAuth()) return;
     if (typeof window.firebasePush !== 'function') return;
 
     let filaExclusao = JSON.parse(localStorage.getItem('wifi_pro_deletes_v1') || '[]');
@@ -2079,28 +1679,12 @@ window.sincronizarPendentes = async function() {
 
 // EVENTOS BASE DO APLICATIVO
 window.addEventListener('online', () => {
-    if (window.wifiAuthState?.status === 'blocked') {
-        window.atualizarContador('bloqueado');
-        return;
-    }
-    if (typeof window.podeSincronizarFirebaseComAuth === 'function' && !window.podeSincronizarFirebaseComAuth()) {
-        if (typeof window.temSessaoLocalWifi === 'function' && window.temSessaoLocalWifi()) {
-            window.atualizarContador('local');
-        } else {
-            window.atualizarContador('auth');
-        }
-        return;
-    }
     window.atualizarContador('local');
     if (typeof window.sincronizarLogsPendentes === 'function') window.sincronizarLogsPendentes();
     if (typeof window.firebasePush === 'function') window.sincronizarPendentes();
 });
 
 window.addEventListener('offline', () => { window.atualizarContador('offline'); });
-
-window.addEventListener('wifi-auth-state-changed', () => {
-    window.aplicarPermissoesInterface();
-});
 
 if (window.matchMedia) {
     const themeMedia = window.matchMedia('(prefers-color-scheme: light)');
@@ -2118,12 +1702,6 @@ window.addEventListener('DOMContentLoaded', async () => {
     window.aplicarTemaApp();
     window.aplicarModoDesenvolvedor();
     window.aplicarRuntimeLayout();
-    [250, 1000, 2500].forEach(delay => {
-        setTimeout(() => {
-            window.aplicarRuntimeLayout();
-            window.atualizarDashboardLayout();
-        }, delay);
-    });
     window.aplicarViewMode(); 
 
     window.renderizarInterface(window.redesEmMemoria || []);
@@ -2512,56 +2090,6 @@ window.confirmarExclusaoDefinitiva = function() {
     if(tUndo) tUndo.className = '';
 };
 
-window.obterLocalizacaoCadastroRede = async function() {
-    if (!navigator.geolocation) {
-        throw new Error('GPS indisponivel neste dispositivo.');
-    }
-
-    const tentativas = [
-        { enableHighAccuracy: false, timeout: 2500, maximumAge: 60000 },
-        { enableHighAccuracy: true, timeout: 4500, maximumAge: 0 }
-    ];
-    let ultimoErro = null;
-
-    for (const opcoes of tentativas) {
-        try {
-            const pos = await new Promise((resolve, reject) => {
-                let encerrado = false;
-                const limite = setTimeout(() => {
-                    if (encerrado) return;
-                    encerrado = true;
-                    reject(new Error('GPS demorou demais.'));
-                }, Number(opcoes.timeout || 4000) + 1000);
-
-                navigator.geolocation.getCurrentPosition(
-                    (resultado) => {
-                        if (encerrado) return;
-                        encerrado = true;
-                        clearTimeout(limite);
-                        resolve(resultado);
-                    },
-                    (erro) => {
-                        if (encerrado) return;
-                        encerrado = true;
-                        clearTimeout(limite);
-                        reject(erro);
-                    },
-                    opcoes
-                );
-            });
-
-            return {
-                lat: pos.coords.latitude,
-                lng: pos.coords.longitude
-            };
-        } catch (erro) {
-            ultimoErro = erro;
-        }
-    }
-
-    throw ultimoErro || new Error('GPS falhou.');
-};
-
 window.atualizarGeoRedeExistente = async function() {
     window.vibrar();
     if (!window.redeDuplicadaAtual) return;
@@ -2593,9 +2121,11 @@ window.atualizarGeoRedeExistente = async function() {
     else if (usarGeo) {
         btnGeo.innerText = "Obtendo GPS..."; btnGeo.disabled = true;
         try {
-            const pos = await window.obterLocalizacaoCadastroRede();
-            lat = pos.lat; 
-            lng = pos.lng;
+            const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, {
+                enableHighAccuracy: true, timeout: 7000 
+            }));
+            lat = pos.coords.latitude; 
+            lng = pos.coords.longitude;
         } catch(e) { 
             window.mostrarToast("GPS falhou. Verifique as permissoes."); 
             btnGeo.innerText = "Adicionar GPS Agora"; 
@@ -2681,110 +2211,103 @@ window.salvarRedeLocal = async function() {
     let lat = null, lng = null;
     const btnSalvar = document.getElementById('btnSalvarModal');
 
-    if (btnSalvar?.dataset.saving === 'true') return;
-    const restaurarBotaoSalvar = () => {
-        if (!btnSalvar) return;
-        btnSalvar.innerText = "Salvar";
-        btnSalvar.disabled = false;
-        delete btnSalvar.dataset.saving;
-    };
-
-    if (btnSalvar) {
-        btnSalvar.dataset.saving = 'true';
-        btnSalvar.disabled = true;
-        btnSalvar.innerText = usarGeo && !coordManual ? "Obtendo GPS..." : "Salvando...";
-    }
-
-    try {
-        // PRIORIDADE 1: Coordenadas digitadas manualmente (sempre tem prioridade)
-        if (coordManual) {
-            const partes = coordManual.split(',');
-            if (partes.length >= 2) {
-                const l = parseFloat(partes[0].trim().replace(',', '.'));
-                const g = parseFloat(partes[1].trim().replace(',', '.'));
-                if (!isNaN(l) && !isNaN(g)) { 
-                    lat = l; 
-                    lng = g; 
-                } else {
-                    window.mostrarToast("Coordenadas invalidas! Use o formato: -23.55, -46.63");
-                    return;
-                }
+    // PRIORIDADE 1: Coordenadas digitadas manualmente (sempre tem prioridade)
+    if (coordManual) {
+        const partes = coordManual.split(',');
+        if (partes.length >= 2) {
+            const l = parseFloat(partes[0].trim().replace(',', '.'));
+            const g = parseFloat(partes[1].trim().replace(',', '.'));
+            if (!isNaN(l) && !isNaN(g)) { 
+                lat = l; 
+                lng = g; 
             } else {
                 window.mostrarToast("Coordenadas invalidas! Use o formato: -23.55, -46.63");
                 return;
             }
-        } 
-        // PRIORIDADE 2: GPS do celular (apenas se checkbox marcado e sem coordenadas manuais)
-        else if (usarGeo) {
-            try {
-                const pos = await window.obterLocalizacaoCadastroRede();
-                lat = pos.lat; 
-                lng = pos.lng;
-            } catch(e) { 
-                console.warn('GPS falhou ao salvar rede.', e);
-                window.mostrarToast("GPS falhou. Rede salva sem localizacao.");
-                // Continua salvando sem localizacao
-            }
-        }
-        // PRIORIDADE 3: Sem localizacao (campo vazio e checkbox desmarcado)
-        // Neste caso, lat e lng permanecem null, o que e valido
-
-        if (btnSalvar) btnSalvar.innerText = "Salvando...";
-
-        const bssid = typeof window.normalizarWifiBssid === 'function'
-            ? window.normalizarWifiBssid(window.novaRedeBssidSugerida)
-            : String(window.novaRedeBssidSugerida || '').trim().toLowerCase();
-        const contextoWifiCadastro = window.novaRedeWifiSugerida ? { ...window.novaRedeWifiSugerida } : null;
-        const conectarAposCadastro = !!window.novaRedeConectarAposCadastro;
-
-        window.deduplicarRedesMemoria();
-        const redeJaExistente = window.encontrarRedeMesmoCadastro(s, p, bssid || null);
-        if (redeJaExistente) {
-            window.renderizarInterface(window.redesEmMemoria);
-            window.fecharModal();
-            window.mostrarToast("Esta rede ja estava salva.");
+        } else {
+            window.mostrarToast("Coordenadas invalidas! Use o formato: -23.55, -46.63");
             return;
         }
-
-        const metaCriacao = window.criarMetadadosCadastroRede();
-        const logicalId = window.obterIdLogicoRede({ ssid: s, senha: p, lat, lng, bssid: bssid || null });
-        let novoId = 'local_' + metaCriacao.createdAt; 
-        if (navigator.onLine && typeof window.firebasePush === 'function') {
-            const key = window.firebasePush(s, p, lat, lng, bssid || null, { ...metaCriacao, logicalId });
-            if (key) novoId = key;
+    } 
+    // PRIORIDADE 2: GPS do celular (apenas se checkbox marcado e sem coordenadas manuais)
+    else if (usarGeo) {
+        btnSalvar.innerText = "Obtendo GPS..."; 
+        btnSalvar.disabled = true;
+        try {
+            const pos = await new Promise((res, rej) => navigator.geolocation.getCurrentPosition(res, rej, {
+                enableHighAccuracy: true, timeout: 7000 
+            }));
+            lat = pos.coords.latitude; 
+            lng = pos.coords.longitude;
+        } catch(e) { 
+            window.mostrarToast("GPS falhou. Rede salva sem localizacao.");
+            // Continua salvando sem localizaÃ§Ã£o
         }
-
-        const novaRede = { id: novoId, ssid: s, senha: p, lat, lng, bssid: bssid || null, logicalId, ...metaCriacao };
-        window.redesEmMemoria.push(novaRede);
-        window.registrarLogEvento('rede_adicionada', `Rede adicionada: ${s}`, {
-            redeId: novoId,
-            ssid: s,
-            senha: p,
-            bssid: bssid || null,
-            createdAt: metaCriacao.createdAt,
-            timestamp: metaCriacao.createdAt
-        });
-        window.deduplicarRedesMemoria();
-        window.redesEmMemoria.sort((a, b) => a.ssid.localeCompare(b.ssid));
-        await window.atualizarBackupLocal(window.redesEmMemoria);
-        window.renderizarInterface(window.redesEmMemoria);
-        if (typeof window.atualizarEstadoWifiComBanco === 'function') {
-            window.atualizarEstadoWifiComBanco();
-        }
-        window.fecharModal(); 
-        restaurarBotaoSalvar();
-
-        const conectando = await window.tentarConectarRedeRecemCadastrada(novaRede, contextoWifiCadastro, conectarAposCadastro);
-        if (conectando) return;
-        
-        const msgSucesso = lat && lng ? "Rede salva com localizacao!" : "Rede salva sem localizacao!";
-        window.mostrarToast(msgSucesso);
-    } catch (error) {
-        console.error('Falha ao salvar rede local.', error);
-        window.mostrarToast("Nao foi possivel salvar a rede. Tente novamente.");
-    } finally {
-        restaurarBotaoSalvar();
     }
+    // PRIORIDADE 3: Sem localizaÃ§Ã£o (campo vazio e checkbox desmarcado)
+    // Neste caso, lat e lng permanecem null, o que Ã© vÃ¡lido
+
+    const bssid = typeof window.normalizarWifiBssid === 'function'
+        ? window.normalizarWifiBssid(window.novaRedeBssidSugerida)
+        : String(window.novaRedeBssidSugerida || '').trim().toLowerCase();
+    const contextoWifiCadastro = window.novaRedeWifiSugerida ? { ...window.novaRedeWifiSugerida } : null;
+    const conectarAposCadastro = !!window.novaRedeConectarAposCadastro;
+
+    if (btnSalvar?.dataset.saving === 'true') return;
+    if (btnSalvar) {
+        btnSalvar.dataset.saving = 'true';
+        btnSalvar.disabled = true;
+        btnSalvar.innerText = "Salvando...";
+    }
+
+    window.deduplicarRedesMemoria();
+    const redeJaExistente = window.encontrarRedeMesmoCadastro(s, p, bssid || null);
+    if (redeJaExistente) {
+        window.renderizarInterface(window.redesEmMemoria);
+        window.fecharModal();
+        if (btnSalvar) {
+            btnSalvar.innerText = "Salvar";
+            btnSalvar.disabled = false;
+            delete btnSalvar.dataset.saving;
+        }
+        window.mostrarToast("Esta rede ja estava salva.");
+        return;
+    }
+
+    const metaCriacao = window.criarMetadadosCadastroRede();
+    const logicalId = window.obterIdLogicoRede({ ssid: s, senha: p, lat, lng, bssid: bssid || null });
+    let novoId = 'local_' + metaCriacao.createdAt; 
+    if (navigator.onLine && typeof window.firebasePush === 'function') {
+        const key = window.firebasePush(s, p, lat, lng, bssid || null, { ...metaCriacao, logicalId });
+        if (key) novoId = key;
+    }
+
+    const novaRede = { id: novoId, ssid: s, senha: p, lat, lng, bssid: bssid || null, logicalId, ...metaCriacao };
+    window.redesEmMemoria.push(novaRede);
+    window.registrarLogEvento('rede_adicionada', `Rede adicionada: ${s}`, {
+        redeId: novoId,
+        ssid: s,
+        senha: p,
+        bssid: bssid || null,
+        createdAt: metaCriacao.createdAt,
+        timestamp: metaCriacao.createdAt
+    });
+    window.deduplicarRedesMemoria();
+    window.redesEmMemoria.sort((a, b) => a.ssid.localeCompare(b.ssid));
+    await window.atualizarBackupLocal(window.redesEmMemoria);
+    window.renderizarInterface(window.redesEmMemoria);
+    if (typeof window.atualizarEstadoWifiComBanco === 'function') {
+        window.atualizarEstadoWifiComBanco();
+    }
+    window.fecharModal(); 
+    btnSalvar.innerText = "Salvar"; 
+    btnSalvar.disabled = false;
+    delete btnSalvar.dataset.saving;
+    const conectando = await window.tentarConectarRedeRecemCadastrada(novaRede, contextoWifiCadastro, conectarAposCadastro);
+    if (conectando) return;
+    
+    const msgSucesso = lat && lng ? "Rede salva com localizacao!" : "Rede salva sem localizacao!";
+    window.mostrarToast(msgSucesso);
 };
 
 window.importarListaTexto = async function() {

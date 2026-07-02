@@ -1,13 +1,10 @@
-const CACHE_NAME = 'wifi-manager-pwa-v36'; // Atualizado para forcar o navegador a instalar a nova versao
+const CACHE_NAME = 'wifi-manager-pwa-v23-dbopt'; // Atualizado para forcar o navegador a instalar a nova versao
 const ASSETS = [
   './',
   './index.html',
   './manifest.json',
   './assets/css/style.css',
   './js/core.js',
-  './js/auth.js',
-  './js/admin.js',
-  './js/firebase-config.js',
   './js/native-wifi.js',
   './js/map-engine.js',
   './js/qr-engine.js',
@@ -51,7 +48,7 @@ self.addEventListener('fetch', (e) => {
   // Para arquivos locais que estão no ASSETS, usamos Cache First para máxima velocidade offline
   if (ASSETS.some(asset => e.request.url.includes(asset.replace('./', '')))) {
     e.respondWith(
-      caches.match(e.request, { ignoreSearch: true }).then((response) => {
+      caches.match(e.request).then((response) => {
         return response || fetch(e.request);
       })
     );
@@ -59,7 +56,7 @@ self.addEventListener('fetch', (e) => {
     // Para outras requisições (como Firebase), tentamos rede primeiro, depois cache
     e.respondWith(
       fetch(e.request).catch(() => {
-        return caches.match(e.request, { ignoreSearch: true });
+        return caches.match(e.request);
       })
     );
   }

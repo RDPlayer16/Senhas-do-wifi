@@ -7,51 +7,10 @@
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#4F46E5">
 
-    <link rel="stylesheet" href="./assets/css/style.css?v=36">
+    <link rel="stylesheet" href="./assets/css/style.css">
     <link rel="stylesheet" href="./js/libs/leaflet.css">
 </head>
 <body>
-
-    <div id="authOverlay" class="auth-overlay" role="dialog" aria-modal="true">
-        <div class="auth-card">
-            <div class="auth-brand">
-                <div class="auth-brand-icon">&#128246;</div>
-                <div>
-                    <strong>Wi-Fi Manager Pro</strong>
-                    <span>Atualizacao 3.0</span>
-                </div>
-            </div>
-            <h2 id="authTitle">Verificando sessao</h2>
-            <p id="authMessage">Aguarde enquanto o app confere o login salvo neste dispositivo.</p>
-            <div id="authModeTabs" class="auth-mode-tabs">
-                <button type="button" id="authLoginModeButton" class="active" onclick="window.definirModoAuth && window.definirModoAuth('login')">Entrar</button>
-                <button type="button" id="authCreateModeButton" onclick="window.definirModoAuth && window.definirModoAuth('register')">Criar conta</button>
-            </div>
-            <form id="authLoginForm" class="auth-form">
-                <label id="authNameRow" class="auth-name-row">
-                    <span>Nome</span>
-                    <input type="text" id="authName" autocomplete="name" placeholder="Seu nome">
-                </label>
-                <label>
-                    <span>E-mail</span>
-                    <input type="email" id="authEmail" autocomplete="email" placeholder="seu@email.com">
-                </label>
-                <label>
-                    <span>Senha</span>
-                    <input type="password" id="authPassword" autocomplete="current-password" placeholder="Senha">
-                </label>
-                <button id="authSubmitButton" type="submit" class="btn-add">Entrar</button>
-                <div id="authStatus" class="auth-status"></div>
-            </form>
-            <div id="authPendingActions" class="auth-pending-actions">
-                <button type="button" class="btn-scan" onclick="window.verificarLiberacaoConta && window.verificarLiberacaoConta()">Verificar liberacao</button>
-                <button type="button" onclick="window.sairContaWifi && window.sairContaWifi()">Sair da conta</button>
-            </div>
-            <div id="authBlockedActions" class="auth-blocked-actions">
-                <button type="button" class="btn-scan" onclick="window.entrarOutraContaWifi && window.entrarOutraContaWifi()">Entrar em outra conta</button>
-            </div>
-        </div>
-    </div>
 
     <div id="drawerBackdrop" class="drawer-backdrop" onclick="window.fecharMenuLateral()"></div>
     <aside id="sideDrawer" class="side-drawer">
@@ -59,42 +18,19 @@
             <div class="brand-icon">📶</div>
             <div>
                 <strong>Wi-Fi Manager Pro</strong>
-                <span id="brandVersionLabel">Versao 3.0</span>
+                <span id="brandVersionLabel">Versao 2.3 PWA</span>
             </div>
         </div>
-        <div id="drawerAccountBox" class="drawer-account">
-            <span>Conta conectada</span>
-            <strong id="drawerAccountEmail">Carregando...</strong>
-            <small id="drawerAccountStatus">Sessao persistente</small>
-        </div>
-        <div class="drawer-section pwa-only">
-            <span class="drawer-section-title">App Android</span>
-            <div class="drawer-note">Conheca a versao APK para usar recursos nativos do celular.</div>
-            <button onclick="window.abrirLinkAppAndroid && window.abrirLinkAppAndroid()"><span class="drawer-icon">&#128241;</span><span>Conhecer app Android</span></button>
-        </div>
-        <div class="drawer-section">
-            <span class="drawer-section-title">Atualizacoes</span>
-            <button onclick="window.atualizarDadosDoApp && window.atualizarDadosDoApp()"><span class="drawer-icon">&#8635;</span><span>Atualizar dados</span></button>
-            <button onclick="window.verificarVersaoApp && window.verificarVersaoApp(true)"><span class="drawer-icon">&#9432;</span><span>Checar versao</span></button>
-            <button class="pwa-only" onclick="window.limparCachePwa && window.limparCachePwa()"><span class="drawer-icon">&#9851;</span><span>Limpar cache do PWA</span></button>
-            <button class="native-only" onclick="window.abrirLinkAtualizacaoApp && window.abrirLinkAtualizacaoApp()"><span class="drawer-icon">&#8681;</span><span>Atualizar APK</span></button>
-        </div>
-        <div class="drawer-section">
-            <span class="drawer-section-title">Ferramentas</span>
-            <button onclick="window.abrirModalExportar()"><span class="drawer-icon">&#8681;</span><span>Backup e Exportacao</span></button>
-            <button onclick="window.abrirModalGerenciarRoteador && window.abrirModalGerenciarRoteador()"><span class="drawer-icon">&#9635;</span><span>Gerenciar Roteador</span></button>
-            <button onclick="window.abrirModalConfiguracoes()"><span class="drawer-icon">&#9881;</span><span>Configuracoes</span></button>
-            <button onclick="window.mostrarSobreApp && window.mostrarSobreApp()"><span class="drawer-icon">i</span><span>Sobre o App</span></button>
-            <button onclick="window.mostrarToast('Ajuda e suporte serao adicionados em uma proxima versao.')"><span class="drawer-icon">?</span><span>Ajuda e Suporte</span></button>
-        </div>
-        <div class="drawer-section admin-only">
-            <span class="drawer-section-title">Admin</span>
-            <button onclick="window.mostrarTelaApp('admin')"><span class="drawer-icon">&#128272;</span><span>Painel Admin</span></button>
-            <button class="admin-entry" onclick="window.abrirFerramentasAdmin && window.abrirFerramentasAdmin()"><span class="drawer-icon">&#9670;</span><span>Ferramentas do Admin</span></button>
-        </div>
-        <div class="drawer-section">
-            <button onclick="window.sairContaWifi && window.sairContaWifi()"><span class="drawer-icon">&#9211;</span><span>Sair da conta</span></button>
-        </div>
+        <button onclick="window.mostrarTelaApp('home')"><span class="drawer-icon">⌂</span><span>Inicio</span></button>
+        <button onclick="window.mostrarTelaApp('saved')"><span class="drawer-icon">≋</span><span>Redes Salvas</span></button>
+        <button id="drawerWifiAction" onclick="window.abrirModalWifiReal()"><span class="drawer-icon">⌁</span><span>Redes Encontradas</span></button>
+        <button onclick="window.abrirMapaGlobal()"><span class="drawer-icon">⌖</span><span>Mapa</span></button>
+        <button onclick="window.abrirModalExportar()"><span class="drawer-icon">⇪</span><span>Backup e Exportacao</span></button>
+        <button onclick="window.abrirModalGerenciarRoteador && window.abrirModalGerenciarRoteador()"><span class="drawer-icon">&#9635;</span><span>Gerenciar Roteador</span></button>
+        <button onclick="window.abrirModalConfiguracoes()"><span class="drawer-icon">⚙</span><span>Configuracoes</span></button>
+        <button class="developer-entry" onclick="window.abrirModalAvancado()"><span class="drawer-icon">◆</span><span>Modo Desenvolvedor</span></button>
+        <button onclick="window.mostrarToast('Ajuda e suporte serao adicionados em uma proxima versao.')"><span class="drawer-icon">?</span><span>Ajuda e Suporte</span></button>
+        <button onclick="window.mostrarSobreApp && window.mostrarSobreApp()"><span class="drawer-icon">ⓘ</span><span>Sobre o App</span></button>
     </aside>
 
     <div class="app-shell">
@@ -157,132 +93,6 @@
                     <button class="filter-tab" data-filter="recent" onclick="window.filtrarPainel('recent')">Recentes <span id="tabRecentCount">0</span></button>
                 </div>
                 <div class="content-area"><div id="output"></div></div>
-            </section>
-
-            <section id="appAdminScreen" class="app-screen admin-shell admin-only">
-                <div class="list-toolbar">
-                    <div>
-                        <strong>Admin</strong>
-                        <small id="adminSubtitle">Usuarios autorizados</small>
-                    </div>
-                    <div class="list-toolbar-actions">
-                        <button class="btn-scan" onclick="window.vibrar(); window.atualizarPainelAdmin && window.atualizarPainelAdmin(true)">Atualizar</button>
-                    </div>
-                </div>
-
-                <div class="admin-tools-grid">
-                    <button data-admin-tool-button="diagnostic" onclick="window.abrirPainelFerramentaAdmin && window.abrirPainelFerramentaAdmin('diagnostic')"><span>Firebase</span><small>Teste de conexao</small></button>
-                    <button data-admin-tool-button="log" onclick="window.abrirPainelFerramentaAdmin && window.abrirPainelFerramentaAdmin('log')"><span>Logs</span><small>Historico do app</small></button>
-                    <button data-admin-tool-button="maintenance" onclick="window.abrirPainelFerramentaAdmin && window.abrirPainelFerramentaAdmin('maintenance')"><span>Manutencao</span><small>Backup e cache</small></button>
-                    <button data-admin-tool-button="duplicates" onclick="window.abrirPainelFerramentaAdmin && window.abrirPainelFerramentaAdmin('duplicates')"><span>Duplicatas</span><small>Limpeza do banco</small></button>
-                    <button data-admin-tool-button="import" onclick="window.abrirPainelFerramentaAdmin && window.abrirPainelFerramentaAdmin('import')"><span>Importar</span><small>Restaurar backup</small></button>
-                    <button data-admin-tool-button="history" onclick="window.abrirPainelFerramentaAdmin && window.abrirPainelFerramentaAdmin('history')"><span>Historico</span><small>Eventos por rede</small></button>
-                </div>
-
-                <div id="adminToolPanel" class="admin-tool-panel">
-                    <div class="admin-tool-heading">
-                        <div>
-                            <strong id="adminToolTitle">Ferramenta Admin</strong>
-                            <small id="adminToolSubtitle">Selecione uma ferramenta acima.</small>
-                        </div>
-                        <button type="button" class="icon-btn" onclick="window.fecharPainelFerramentaAdmin && window.fecharPainelFerramentaAdmin()" title="Fechar">&#10005;</button>
-                    </div>
-
-                    <section class="admin-tool-section" data-admin-tool-panel="diagnostic">
-                        <div id="firebaseDiagnosticOutput" class="developer-log">Toque em testar para verificar leitura, escrita e exclusao no Firebase.</div>
-                        <div class="admin-tool-actions">
-                            <button class="btn-scan" onclick="window.vibrar(); window.testarDiagnosticoFirebase()">Testar Firebase</button>
-                            <button class="btn-scan" onclick="window.vibrar(); window.renderizarEstadoDiagnosticoFirebase()">Atualizar Estado</button>
-                        </div>
-                    </section>
-
-                    <section class="admin-tool-section" data-admin-tool-panel="log">
-                        <div id="appLogOutput" class="developer-log">Sem eventos registrados.</div>
-                        <div class="admin-tool-actions">
-                            <button class="btn-scan" onclick="window.vibrar(); window.carregarLogAdmin()">Atualizar Log</button>
-                            <button class="btn-delete" onclick="window.vibrar(); window.limparLogDesenvolvedor()">Limpar Log</button>
-                        </div>
-                    </section>
-
-                    <section class="admin-tool-section" data-admin-tool-panel="maintenance">
-                        <div id="maintenanceBackupOutput" class="developer-log">Nenhum backup de manutencao criado nesta instalacao.</div>
-                        <div class="admin-tool-actions">
-                            <button class="btn-scan" onclick="window.vibrar(); window.criarBackupManutencao('manual')">Gerar Backup</button>
-                            <button class="btn-scan" onclick="window.vibrar(); window.exportarUltimoBackupManutencao()">Exportar Backup</button>
-                            <button class="btn-reset" onclick="window.vibrar(); window.hardResetPWA()">Atualizar PWA</button>
-                        </div>
-                        <div class="developer-hint">Use a limpeza pesada apenas quando o cache local estiver inconsistente.</div>
-                    </section>
-
-                    <section class="admin-tool-section" data-admin-tool-panel="duplicates">
-                        <div id="duplicateCleanupOutput" class="developer-log">Toque em analisar para localizar redes duplicadas exatas.</div>
-                        <div class="admin-tool-actions">
-                            <button class="btn-scan" onclick="window.vibrar(); window.analisarDuplicatasBanco()">Analisar Exatas</button>
-                            <button class="btn-delete" onclick="window.vibrar(); window.removerDuplicatasBanco()">Remover Exatas</button>
-                        </div>
-                        <div class="divider">POSSIVEIS DUPLICATAS</div>
-                        <div id="possibleDuplicateOutput" class="developer-log">Toque em analisar para ver redes com mesmo SSID e dados diferentes.</div>
-                        <div class="admin-tool-actions">
-                            <button class="btn-scan" onclick="window.vibrar(); window.abrirGerenciamentoPossiveisDuplicatas()">Gerenciar</button>
-                            <button class="btn-scan" onclick="window.vibrar(); window.exportarPdfPossiveisDuplicatas()">Exportar PDF</button>
-                        </div>
-                    </section>
-
-                    <section class="admin-tool-section" data-admin-tool-panel="import">
-                        <textarea id="listaInputOculta" placeholder="Cole backup antigo (* NOME: SENHA) ou novo backup com Senha, BSSID e Coordenadas"></textarea>
-                        <input type="file" id="backupImportInput" accept=".txt,.pdf,text/plain,application/pdf" style="display:none;" onchange="window.importarArquivoBackup(event)">
-                        <div class="admin-tool-actions">
-                            <button class="btn-scan" onclick="window.vibrar(); document.getElementById('backupImportInput').click();">Selecionar TXT/PDF</button>
-                            <button class="btn-add" onclick="window.vibrar(); window.importarListaTexto()">Importar texto</button>
-                        </div>
-                        <div class="developer-hint">Antes de importar, o app cria um backup local automatico da lista atual.</div>
-                    </section>
-
-                    <section class="admin-tool-section" data-admin-tool-panel="history">
-                        <input type="text" id="historySearchInput" placeholder="Digite SSID ou ID da rede" oninput="window.renderizarHistoricoRede()">
-                        <div id="networkHistoryOutput" class="developer-log">Digite o nome de uma rede para ver o historico registrado.</div>
-                    </section>
-                </div>
-
-                <div class="admin-layout">
-                    <form id="adminUserForm" class="admin-form" onsubmit="window.salvarUsuarioAdmin(event)">
-                        <div>
-                            <strong>Autorizar manualmente</strong>
-                            <small>Normalmente o usuario cria a conta e aparece como pendente na lista.</small>
-                        </div>
-                        <label>
-                            <span>Codigo do usuario</span>
-                            <input type="text" id="adminUserUid" autocomplete="off" placeholder="UID">
-                        </label>
-                        <label>
-                            <span>E-mail</span>
-                            <input type="email" id="adminUserEmail" autocomplete="off" placeholder="usuario@email.com">
-                        </label>
-                        <label>
-                            <span>Nome</span>
-                            <input type="text" id="adminUserName" autocomplete="off" placeholder="Nome do usuario">
-                        </label>
-                        <label class="admin-check-row">
-                            <input type="checkbox" id="adminUserWipe" checked>
-                            <span>Limpar dados locais ao bloquear</span>
-                        </label>
-                        <div class="admin-form-actions">
-                            <button type="button" class="btn-scan" onclick="window.limparFormularioAdmin && window.limparFormularioAdmin()">Limpar</button>
-                            <button type="submit" class="btn-add">Salvar usuario</button>
-                        </div>
-                        <div id="adminFormStatus" class="admin-status"></div>
-                    </form>
-
-                    <div class="admin-users-panel">
-                        <div class="search-row">
-                            <input type="text" id="adminSearchInput" placeholder="Pesquisar usuario..." oninput="window.renderizarUsuariosAdmin && window.renderizarUsuariosAdmin()">
-                            <button class="icon-btn refresh-btn" onclick="window.atualizarPainelAdmin && window.atualizarPainelAdmin(true)" title="Atualizar">&#8635;</button>
-                        </div>
-                        <div id="adminUsersOutput" class="admin-users-list">
-                            <div class="admin-empty">Carregando usuarios...</div>
-                        </div>
-                    </div>
-                </div>
             </section>
         </main>
     </div>
@@ -402,6 +212,70 @@
         </div>
     </div>
 
+    <div id="modalAvancado" class="modal-overlay">
+        <div class="modal-content developer-modal">
+            <div class="modal-heading-row">
+                <h3>Modo Desenvolvedor</h3>
+                <button style="background:var(--text-muted)" onclick="window.vibrar(); window.fecharModalAvancado()">Fechar</button>
+            </div>
+
+            <div class="developer-tabs">
+                <button class="active" data-dev-tab-button="import" onclick="window.abrirAbaDesenvolvedor('import')">Importar</button>
+                <button data-dev-tab-button="duplicates" onclick="window.abrirAbaDesenvolvedor('duplicates')">Duplicatas</button>
+                <button data-dev-tab-button="diagnostic" onclick="window.abrirAbaDesenvolvedor('diagnostic')">Firebase</button>
+                <button data-dev-tab-button="history" onclick="window.abrirAbaDesenvolvedor('history')">Historico</button>
+                <button data-dev-tab-button="log" onclick="window.abrirAbaDesenvolvedor('log')">Log</button>
+                <button data-dev-tab-button="maintenance" onclick="window.abrirAbaDesenvolvedor('maintenance')">Manutencao</button>
+            </div>
+
+            <section class="developer-panel active" data-dev-tab-panel="import">
+                <textarea id="listaInputOculta" placeholder="Cole backup antigo (* NOME: SENHA) ou novo backup com Senha, BSSID e Coordenadas"></textarea>
+                <input type="file" id="backupImportInput" accept=".txt,.pdf,text/plain,application/pdf" style="display:none;" onchange="window.importarArquivoBackup(event)">
+                <button class="btn-scan" onclick="window.vibrar(); document.getElementById('backupImportInput').click();">Selecionar TXT/PDF</button>
+                <button class="btn-add" onclick="window.vibrar(); window.importarListaTexto()">Importar texto colado</button>
+                <div class="developer-hint">Antes de importar, o app cria um backup local automatico da lista atual.</div>
+            </section>
+
+            <section class="developer-panel" data-dev-tab-panel="duplicates">
+                <div id="duplicateCleanupOutput" class="developer-log">Toque em analisar para localizar redes duplicadas exatas.</div>
+                <button class="btn-scan" onclick="window.vibrar(); window.analisarDuplicatasBanco()">Analisar Duplicadas Exatas</button>
+                <button class="btn-delete" onclick="window.vibrar(); window.removerDuplicatasBanco()">Remover Duplicadas Exatas</button>
+                <div class="divider">POSSIVEIS DUPLICATAS</div>
+                <div id="possibleDuplicateOutput" class="developer-log">Toque em analisar para ver redes com mesmo SSID e dados diferentes.</div>
+                <button class="btn-scan" onclick="window.vibrar(); window.abrirGerenciamentoPossiveisDuplicatas()">Gerenciar Possiveis Duplicatas</button>
+                <button class="btn-scan" onclick="window.vibrar(); window.exportarPdfPossiveisDuplicatas()">Exportar PDF de Analise</button>
+            </section>
+
+            <section class="developer-panel" data-dev-tab-panel="diagnostic">
+                <div id="firebaseDiagnosticOutput" class="developer-log">Toque em testar para verificar leitura, escrita e exclusao no Firebase.</div>
+                <button class="btn-scan" onclick="window.vibrar(); window.testarDiagnosticoFirebase()">Testar Firebase</button>
+                <button class="btn-scan" onclick="window.vibrar(); window.renderizarEstadoDiagnosticoFirebase()">Atualizar Estado</button>
+            </section>
+
+            <section class="developer-panel" data-dev-tab-panel="history">
+                <input type="text" id="historySearchInput" placeholder="Digite SSID ou ID da rede" oninput="window.renderizarHistoricoRede()">
+                <div id="networkHistoryOutput" class="developer-log">Digite o nome de uma rede para ver o historico registrado.</div>
+            </section>
+
+            <section class="developer-panel" data-dev-tab-panel="log">
+                <div id="appLogOutput" class="developer-log">Sem eventos registrados.</div>
+                <button class="btn-scan" onclick="window.vibrar(); window.carregarLogDesenvolvedor()">Atualizar Log</button>
+                <button class="btn-delete" onclick="window.vibrar(); window.limparLogDesenvolvedor()">Limpar Log</button>
+            </section>
+
+            <section class="developer-panel" data-dev-tab-panel="maintenance">
+                <div id="maintenanceBackupOutput" class="developer-log">Nenhum backup de manutencao criado nesta instalacao.</div>
+                <button class="btn-scan" onclick="window.vibrar(); window.criarBackupManutencao('manual')">Gerar Backup de Seguranca</button>
+                <button class="btn-scan" onclick="window.vibrar(); window.exportarUltimoBackupManutencao()">Exportar Ultimo Backup JSON</button>
+                <button class="btn-reset" onclick="window.vibrar(); window.hardResetPWA()">Atualizar PWA (Limpar Tudo)</button>
+                <div class="developer-hint">Use o reset apenas quando o cache local estiver inconsistente.</div>
+            </section>
+            <div style="display:flex; gap:10px; justify-content: flex-end; margin-top: 15px;">
+                <button style="background:var(--text-muted)" onclick="window.vibrar(); window.fecharModalAvancado()">Fechar</button>
+            </div>
+        </div>
+    </div>
+
     <div id="modalGerenciarDuplicatas" class="modal-overlay">
         <div class="modal-content duplicate-manager-modal">
             <div class="modal-heading-row">
@@ -431,16 +305,14 @@
                     <button data-theme-option="auto" onclick="window.definirTemaApp('auto')">Automatico</button>
                 </div>
             </div>
-            <div class="settings-account">
+            <label class="settings-row">
                 <div>
-                    <strong id="settingsAccountEmail">Nenhuma conta conectada</strong>
-                    <span id="settingsAccountStatus">Login pendente</span>
+                    <strong>Modo Desenvolvedor</strong>
+                    <span>Mostra opcoes avancadas de backup, importacao e manutencao.</span>
                 </div>
-                <button type="button" onclick="window.sairContaWifi && window.sairContaWifi()">Sair</button>
-            </div>
-            <button class="btn-scan" onclick="window.vibrar(); window.mostrarSobreApp && window.mostrarSobreApp()">Sobre o App</button>
-            <button class="btn-scan admin-only" onclick="window.vibrar(); window.fecharModalConfiguracoes(); window.mostrarTelaApp('admin')">Painel Admin</button>
-            <button class="btn-scan admin-only admin-entry" onclick="window.vibrar(); window.abrirFerramentasAdmin && window.abrirFerramentasAdmin()">Ferramentas do Admin</button>
+                <input type="checkbox" id="toggleDeveloperMode" onchange="window.alternarModoDesenvolvedor(this.checked)">
+            </label>
+            <button class="btn-scan developer-entry" onclick="window.vibrar(); window.abrirModalAvancado()">Abrir ferramentas de desenvolvedor</button>
         </div>
     </div>
 
@@ -510,15 +382,13 @@
     <script src="./js/libs/jspdf.umd.min.js"></script>
 
     <!-- Motores do Aplicativo -->
-    <script src="./js/map-engine.js?v=36"></script>
-    <script src="./js/qr-engine.js?v=36"></script>
-    <script src="./js/core.js?v=36"></script>
-    <script src="./js/native-wifi.js?v=36"></script>
+    <script src="./js/map-engine.js"></script>
+    <script src="./js/qr-engine.js"></script>
+    <script src="./js/core.js"></script>
+    <script src="./js/native-wifi.js"></script>
 
     <!-- Sincronizacao Firebase (Ignorado em modo offline) -->
-    <script type="module" src="./js/auth.js?v=36"></script>
-    <script type="module" src="./js/admin.js?v=36"></script>
-    <script type="module" src="./js/firebase-sync.js?v=36"></script>
+    <script type="module" src="./js/firebase-sync.js"></script>
 
     <script>
       // Registro do Service Worker para suporte Offline PWA
