@@ -1,14 +1,41 @@
+import { firebaseConfig } from "./firebase-config.js";
+
+let firebaseSyncScheduleTimer = null;
+let firebaseSyncStartInProgress = false;
+
 window.iniciarFirebaseSeguro = async function() {
-    const config = {
-        apiKey: "AIzaSyCqDSP5SAZdMrHYvyeq9z9lZDp3UTcKu7Y",
-        authDomain: "wifi-manager-pro-44487.firebaseapp.com",
-        databaseURL: "https://wifi-manager-pro-44487-default-rtdb.firebaseio.com",
-        projectId: "wifi-manager-pro-44487",
-        storageBucket: "wifi-manager-pro-44487.firebasestorage.app",
-        messagingSenderId: "653885032085",
-        appId: "1:653885032085:web:3a443b20ad2c6c26067d9c",
-        measurementId: "G-NFF0SWFB9P"
-    };
+    if (!navigator.onLine) return;
+    if (window.firebaseSyncStarted || firebaseSyncStartInProgress) return;
+    firebaseSyncStartInProgress = true;
+    if (typeof window.verificarAutorizacaoWifi === "function") {
+        let autorizado = false;
+        try {
+            autorizado = await window.verificarAutorizacaoWifi({ reason: "before_sync" });
+        } catch (error) {
+            console.warn("Firebase Sync: falha ao confirmar autorizacao antes da sync.", error);
+            firebaseSyncStartInProgress = false;
+            if (typeof window.atualizarContador === "function") {
+                window.atualizarContador("local");
+            }
+            return;
+        }
+        if (!autorizado) {
+            if (typeof window.atualizarContador === "function") {
+                window.atualizarContador(window.wifiAuthState?.status === "blocked" ? "bloqueado" : "local");
+            }
+            firebaseSyncStartInProgress = false;
+            return;
+        }
+    }
+    if (typeof window.podeSincronizarFirebaseComAuth === "function" && !window.podeSincronizarFirebaseComAuth()) {
+        if (typeof window.atualizarContador === "function") {
+            window.atualizarContador(window.wifiAuthState?.status === "blocked" ? "bloqueado" : "auth");
+        }
+        firebaseSyncStartInProgress = false;
+        return;
+    }
+    window.firebaseSyncStarted = true;
+    const config = window.WIFI_FIREBASE_CONFIG || firebaseConfig;
 
     const databaseURL = config.databaseURL.replace(/\/+$/, "");
     let restReadInProgress = false;
@@ -20,6 +47,23 @@ window.iniciarFirebaseSeguro = async function() {
         lastTotal: null,
         lastError: null
     };
+
+    function sincronizacaoAutorizada() {
+        if (typeof window.podeSincronizarFirebaseComAuth !== "function") return true;
+        return window.podeSincronizarFirebaseComAuth();
+    }
+
+    function atualizarEstadoSemAutorizacao() {
+        if (typeof window.atualizarContador === "function") {
+            window.atualizarContador(window.wifiAuthState?.status === "blocked" ? "bloqueado" : "auth");
+        }
+    }
+
+    function exigirSincronizacaoAutorizada(contexto = "firebase") {
+        if (sincronizacaoAutorizada()) return true;
+        atualizarEstadoSemAutorizacao();
+        throw new Error(`Sincronizacao bloqueada sem autorizacao: ${contexto}`);
+    }
 
     function atualizarEstadoFirebaseSync(patch = {}) {
         window.firebaseSyncState = {
@@ -53,21 +97,31 @@ window.iniciarFirebaseSeguro = async function() {
         return `${prefixo}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
     }
 
-    function restUrl(path) {
+    async function restUrl(path) {
         const cleanPath = String(path || "").replace(/^\/+/, "");
+        let url;
         const queryIndex = cleanPath.indexOf("?");
         if (queryIndex !== -1) {
-            return `${databaseURL}/${cleanPath.slice(0, queryIndex)}.json${cleanPath.slice(queryIndex)}`;
+            url = `${databaseURL}/${cleanPath.slice(0, queryIndex)}.json${cleanPath.slice(queryIndex)}`;
+        } else {
+            url = `${databaseURL}/${cleanPath}.json`;
         }
-        return `${databaseURL}/${cleanPath}.json`;
+        const token = typeof window.getWifiAuthToken === "function"
+            ? await window.getWifiAuthToken(false)
+            : null;
+        if (token) {
+            url += `${url.includes("?") ? "&" : "?"}auth=${encodeURIComponent(token)}`;
+        }
+        return url;
     }
 
     async function firebaseRestRequest(path, options = {}) {
+        exigirSincronizacaoAutorizada(path);
         const headers = {
             "Content-Type": "application/json",
             ...(options.headers || {})
         };
-        const response = await fetch(restUrl(path), {
+        const response = await fetch(await restUrl(path), {
             cache: "no-store",
             ...options,
             headers
@@ -85,6 +139,11 @@ window.iniciarFirebaseSeguro = async function() {
     }
 
     async function aplicarSnapshotRedes(dados, origem = "sdk") {
+        if (!sincronizacaoAutorizada()) {
+            atualizarEstadoSemAutorizacao();
+            return Array.isArray(window.redesEmMemoria) ? window.redesEmMemoria : [];
+        }
+
         let listaNuvem = montarListaRedes(dados);
 
         const filaExclusao = JSON.parse(localStorage.getItem("wifi_pro_deletes_v1") || "[]");
@@ -129,8 +188,22 @@ window.iniciarFirebaseSeguro = async function() {
         for (let i = 0; i < snapshotBase.length; i++) {
             snapshotHash = ((snapshotHash << 5) - snapshotHash + snapshotBase.charCodeAt(i)) | 0;
         }
-        const snapshotKey = `${origem}:${snapshotHash}`;
+        const snapshotKey = `redes:${snapshotHash}`;
         const snapshotAnterior = localStorage.getItem("wifi_pro_last_cloud_hash_v1");
+        if (snapshotAnterior === snapshotKey && Array.isArray(window.redesEmMemoria) && window.redesEmMemoria.length > 0) {
+            if (typeof window.atualizarContador === "function") {
+                window.atualizarContador("sincronizado", listaNuvem.length);
+            }
+            atualizarEstadoFirebaseSync({
+                mode: origem === "rest" ? "rest" : "sdk",
+                lastSyncAt: Date.now(),
+                lastOrigin: origem,
+                lastTotal: listaNuvem.length,
+                lastError: null,
+                unchanged: true
+            });
+            return window.redesEmMemoria;
+        }
         if (snapshotAnterior !== snapshotKey && typeof window.registrarLogEvento === "function") {
             window.registrarLogEvento("sync_recebido", `Banco recebido da nuvem: ${listaNuvem.length} rede(s)`, {
                 total: listaNuvem.length,
@@ -155,7 +228,7 @@ window.iniciarFirebaseSeguro = async function() {
             window.atualizarContador("sincronizado", listaNuvem.length);
         }
         atualizarEstadoFirebaseSync({
-            mode: origem === "sdk" ? "sdk" : "rest",
+            mode: origem === "rest" ? "rest" : "sdk",
             lastSyncAt: Date.now(),
             lastOrigin: origem,
             lastTotal: listaNuvem.length,
@@ -166,6 +239,7 @@ window.iniciarFirebaseSeguro = async function() {
 
     window.instalarFirebaseRestFallback = function() {
         window.firebasePush = function(s, p, lat, lng, bssid = null, meta = {}) {
+            if (!sincronizacaoAutorizada()) return null;
             const id = criarIdRest("rede");
             const createdAt = Number(meta.createdAt) || Date.now();
             const payload = {
@@ -191,6 +265,7 @@ window.iniciarFirebaseSeguro = async function() {
         atualizarEstadoFirebaseSync({ mode: "rest" });
 
         window.firebaseExcluir = function(id) {
+            if (!sincronizacaoAutorizada()) return Promise.resolve(null);
             return firebaseRestRequest(`redes_wifi/${limparIdFirebase(id)}`, { method: "DELETE" })
                 .catch(error => console.warn("Firebase REST: falha ao excluir rede.", error));
         };
@@ -204,6 +279,7 @@ window.iniciarFirebaseSeguro = async function() {
         };
 
         window.firebaseAtualizarObjeto = function(id, obj) {
+            if (!sincronizacaoAutorizada()) return Promise.resolve(null);
             return firebaseRestRequest(`redes_wifi/${limparIdFirebase(id)}`, {
                 method: "PATCH",
                 body: JSON.stringify(obj || {})
@@ -212,6 +288,7 @@ window.iniciarFirebaseSeguro = async function() {
 
         window.firebasePushLog = function(evento) {
             if (!evento || !evento.id) return Promise.resolve(null);
+            if (!sincronizacaoAutorizada()) return Promise.resolve(null);
             const logId = limparIdFirebase(evento.id);
             return firebaseRestRequest(`app_logs/${logId}`, {
                 method: "PUT",
@@ -224,6 +301,7 @@ window.iniciarFirebaseSeguro = async function() {
         };
 
         window.firebaseLimparLogs = function() {
+            if (!sincronizacaoAutorizada()) return Promise.resolve(null);
             return firebaseRestRequest("app_logs", { method: "DELETE" });
         };
     };
@@ -311,17 +389,17 @@ window.iniciarFirebaseSeguro = async function() {
     window.instalarFirebaseRestFallback();
 
     try {
-        const { initializeApp } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js");
-        const { getDatabase, ref, onValue, push, set, remove, update, query, orderByChild, limitToLast } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
+        const { initializeApp, getApps, getApp } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-app.js");
+        const { getDatabase, ref, onValue, push, set, remove, update, query, orderByChild, limitToLast, get } = await import("https://www.gstatic.com/firebasejs/12.10.0/firebase-database.js");
 
-        const app = initializeApp(config);
+        const app = getApps().length ? getApp() : initializeApp(config);
         const db = getDatabase(app, config.databaseURL);
         atualizarEstadoFirebaseSync({ mode: "sdk" });
         const redesRef = ref(db, "redes_wifi");
         const logsRef = ref(db, "app_logs");
-        const logsQuery = query(logsRef, orderByChild("timestamp"), limitToLast(300));
 
         window.firebasePush = function(s, p, lat, lng, bssid = null, meta = {}) {
+            if (!sincronizacaoAutorizada()) return null;
             const novaRedeRef = push(redesRef);
             const createdAt = Number(meta.createdAt) || Date.now();
             const payload = {
@@ -343,6 +421,7 @@ window.iniciarFirebaseSeguro = async function() {
         };
 
         window.firebaseExcluir = function(id) {
+            if (!sincronizacaoAutorizada()) return Promise.resolve(null);
             return remove(ref(db, "redes_wifi/" + id)).catch(() => {
                 window.instalarFirebaseRestFallback();
                 return window.firebaseExcluir(id);
@@ -350,6 +429,7 @@ window.iniciarFirebaseSeguro = async function() {
         };
 
         window.firebaseAtualizar = function(id, lat, lng) {
+            if (!sincronizacaoAutorizada()) return Promise.resolve(null);
             return update(ref(db, "redes_wifi/" + id), { lat, lng }).catch(() => {
                 window.instalarFirebaseRestFallback();
                 return window.firebaseAtualizar(id, lat, lng);
@@ -357,6 +437,7 @@ window.iniciarFirebaseSeguro = async function() {
         };
 
         window.firebaseEditarCredenciais = function(id, ssid, senha) {
+            if (!sincronizacaoAutorizada()) return Promise.resolve(null);
             return update(ref(db, "redes_wifi/" + id), { ssid, senha }).catch(() => {
                 window.instalarFirebaseRestFallback();
                 return window.firebaseEditarCredenciais(id, ssid, senha);
@@ -364,6 +445,7 @@ window.iniciarFirebaseSeguro = async function() {
         };
 
         window.firebaseAtualizarObjeto = function(id, obj) {
+            if (!sincronizacaoAutorizada()) return Promise.resolve(null);
             return update(ref(db, "redes_wifi/" + id), obj).catch(() => {
                 window.instalarFirebaseRestFallback();
                 return window.firebaseAtualizarObjeto(id, obj);
@@ -372,6 +454,7 @@ window.iniciarFirebaseSeguro = async function() {
 
         window.firebasePushLog = function(evento) {
             if (!evento || !evento.id) return Promise.resolve(null);
+            if (!sincronizacaoAutorizada()) return Promise.resolve(null);
             const logId = limparIdFirebase(evento.id);
             return set(ref(db, "app_logs/" + logId), {
                 ...evento,
@@ -384,6 +467,7 @@ window.iniciarFirebaseSeguro = async function() {
         };
 
         window.firebaseLimparLogs = function() {
+            if (!sincronizacaoAutorizada()) return Promise.resolve(null);
             return remove(logsRef).catch(() => {
                 window.instalarFirebaseRestFallback();
                 return window.firebaseLimparLogs();
@@ -400,6 +484,7 @@ window.iniciarFirebaseSeguro = async function() {
         const connectedRef = ref(db, ".info/connected");
         onValue(connectedRef, (snap) => {
             if (snap.val() === true) {
+                if (!sincronizacaoAutorizada()) return;
                 if (typeof window.sincronizarLogsPendentes === "function") {
                     window.sincronizarLogsPendentes();
                 }
@@ -407,11 +492,14 @@ window.iniciarFirebaseSeguro = async function() {
                     window.sincronizarPendentes();
                 }
             }
-        }, () => {
-            window.carregarBancoFirebaseRest("erro_connected_ref");
+        }, (error) => {
+            console.warn("Firebase SDK: falha no indicador de conexao.", error);
         });
 
-        onValue(logsQuery, (snapshot) => {
+        window.carregarLogsFirebaseRecentes = async function(limit = 120) {
+            if (!sincronizacaoAutorizada()) return;
+            const consulta = query(logsRef, orderByChild("timestamp"), limitToLast(Number(limit) || 120));
+            const snapshot = await get(consulta);
             const dados = snapshot.val();
             let listaLogs = [];
             if (dados) {
@@ -426,38 +514,95 @@ window.iniciarFirebaseSeguro = async function() {
             if (typeof window.renderizarLogDesenvolvedor === "function") {
                 window.renderizarLogDesenvolvedor();
             }
-        }, (error) => {
-            console.warn("Firebase SDK: falha ao ler logs.", error);
-        });
+        };
 
-        let recebeuSnapshot = false;
-        const fallbackTimer = setTimeout(() => {
-            if (!recebeuSnapshot) {
-                window.carregarBancoFirebaseRest("timeout_sdk");
-            }
-        }, 5000);
-
+        let redesRealtimeTimer = null;
+        let redesRealtimePrimeiroSnapshot = true;
         onValue(redesRef, (snapshot) => {
-            recebeuSnapshot = true;
-            clearTimeout(fallbackTimer);
-            aplicarSnapshotRedes(snapshot.val(), "sdk");
-        }, (error) => {
-            recebeuSnapshot = true;
-            clearTimeout(fallbackTimer);
-            console.warn("Firebase SDK: falha ao ler redes.", error);
-            window.carregarBancoFirebaseRest("erro_sdk_redes");
+            if (!sincronizacaoAutorizada()) return;
+            if (typeof window.atualizarContador === "function" && redesRealtimePrimeiroSnapshot) {
+                window.atualizarContador("sincronizando");
+            }
+            const delay = redesRealtimePrimeiroSnapshot ? 0 : 350;
+            redesRealtimePrimeiroSnapshot = false;
+            clearTimeout(redesRealtimeTimer);
+            redesRealtimeTimer = setTimeout(() => {
+                aplicarSnapshotRedes(snapshot.val(), "sdk_realtime").catch((error) => {
+                    console.warn("Firebase SDK: falha ao aplicar redes em tempo real.", error);
+                    if (typeof window.atualizarContador === "function") {
+                        window.atualizarContador("local");
+                    }
+                });
+            }, delay);
+        }, async (error) => {
+            console.warn("Firebase SDK: falha ao escutar redes.", error);
+            const ok = await window.carregarBancoFirebaseRest("erro_sdk_redes");
+            if (!ok && typeof window.atualizarContador === "function") {
+                window.atualizarContador("local");
+            }
         });
     } catch (error) {
         console.warn("Firebase SDK indisponivel. Tentando REST.", error);
         const ok = await window.carregarBancoFirebaseRest("catch_sdk");
         if (!ok && typeof window.atualizarContador === "function") {
-            window.atualizarContador("offline");
+            window.atualizarContador(navigator.onLine ? "local" : "offline");
         }
+    } finally {
+        firebaseSyncStartInProgress = false;
     }
 };
 
-if (navigator.onLine) {
+async function iniciarFirebaseQuandoAutenticado() {
+    if (!navigator.onLine) {
+        if (typeof window.atualizarContador === "function") {
+            window.atualizarContador("offline");
+        }
+        return;
+    }
+    if (typeof window.waitForWifiAuthInitial === "function") {
+        await window.waitForWifiAuthInitial();
+    }
+    if (window.wifiAuthState?.status === "blocked") {
+        if (typeof window.atualizarContador === "function") {
+            window.atualizarContador("bloqueado");
+        }
+        return;
+    }
+    if (typeof window.verificarAutorizacaoWifi === "function") {
+        const autorizado = await window.verificarAutorizacaoWifi({ reason: "start_sync" });
+        if (!autorizado) {
+            if (typeof window.atualizarContador === "function") {
+                window.atualizarContador(
+                    window.wifiAuthState?.status === "blocked"
+                        ? "bloqueado"
+                        : typeof window.temSessaoLocalWifi === "function" && window.temSessaoLocalWifi()
+                            ? "local"
+                            : "auth"
+                );
+            }
+            return;
+        }
+    }
+    if (typeof window.podeSincronizarFirebaseComAuth === "function" && !window.podeSincronizarFirebaseComAuth()) {
+        if (typeof window.atualizarContador === "function") {
+            window.atualizarContador(
+                typeof window.temSessaoLocalWifi === "function" && window.temSessaoLocalWifi()
+                    ? "local"
+                    : "auth"
+            );
+        }
+        return;
+    }
     window.iniciarFirebaseSeguro();
-} else if (typeof window.atualizarContador === "function") {
-    window.atualizarContador("offline");
 }
+
+function agendarFirebaseQuandoAutenticado(delay = 1800) {
+    clearTimeout(firebaseSyncScheduleTimer);
+    firebaseSyncScheduleTimer = setTimeout(() => {
+        iniciarFirebaseQuandoAutenticado();
+    }, delay);
+}
+
+window.addEventListener("wifi-auth-sync-allowed", () => agendarFirebaseQuandoAutenticado(1200));
+window.addEventListener("online", () => agendarFirebaseQuandoAutenticado(1800));
+agendarFirebaseQuandoAutenticado(2200);
