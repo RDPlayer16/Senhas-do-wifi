@@ -1,4 +1,4 @@
-const CACHE_NAME = 'wifi-manager-pwa-v23-dbopt'; // Atualizado para forcar o navegador a instalar a nova versao
+const CACHE_NAME = 'wifi-manager-pwa-v23-dbopt-bssidfix'; // Atualizado para forcar o navegador a instalar a nova versao
 const ASSETS = [
   './',
   './index.html',

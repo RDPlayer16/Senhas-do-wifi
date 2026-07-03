@@ -27,15 +27,26 @@
     }
 
     function normalizarBssid(bssid) {
-        const value = String(bssid || '').trim().toLowerCase();
+        let value = String(bssid || '').trim().toLowerCase().replace(/\s+/g, '').replace(/-/g, ':');
+        if (/^[0-9a-f]{12}$/.test(value)) {
+            value = value.match(/.{1,2}/g).join(':');
+        }
         if (!value || value === '02:00:00:00:00:00' || value === '00:00:00:00:00:00') return '';
         return /^[0-9a-f]{2}(:[0-9a-f]{2}){5}$/.test(value) ? value : '';
     }
 
     window.normalizarWifiBssid = normalizarBssid;
 
+    function normalizarSsidComparacao(ssid) {
+        let value = String(ssid ?? '');
+        if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
+            value = value.substring(1, value.length - 1);
+        }
+        return typeof value.normalize === 'function' ? value.normalize('NFC') : value;
+    }
+
     function mesmoSsid(a, b) {
-        return String(a || '') === String(b || '');
+        return normalizarSsidComparacao(a) === normalizarSsidComparacao(b);
     }
 
     function getNetworkSsid(networkOrSsid) {
@@ -51,7 +62,14 @@
     }
 
     function redesComMesmoSsid(ssid) {
-        return (window.redesEmMemoria || []).filter(rede => mesmoSsid(rede.ssid, ssid));
+        const alvo = normalizarSsidComparacao(ssid);
+        const redes = window.redesEmMemoria || [];
+        const exatas = redes.filter(rede => normalizarSsidComparacao(rede.ssid) === alvo);
+        if (exatas.length) return exatas;
+
+        const alvoLegado = alvo.trim();
+        if (!alvoLegado) return [];
+        return redes.filter(rede => normalizarSsidComparacao(rede.ssid).trim() === alvoLegado);
     }
 
     function redesSalvasCompativeis(networkOrSsid) {
@@ -64,7 +82,12 @@
         const exatas = mesmoNome.filter(rede => getRedeBssid(rede) === bssid);
         if (exatas.length) return exatas;
 
-        return mesmoNome.filter(rede => !getRedeBssid(rede));
+        const semBssid = mesmoNome.filter(rede => !getRedeBssid(rede));
+        const bssidDiferente = mesmoNome.filter(rede => {
+            const redeBssid = getRedeBssid(rede);
+            return redeBssid && redeBssid !== bssid;
+        });
+        return [...semBssid, ...bssidDiferente];
     }
 
     function findRedeSalva(networkOrSsid) {

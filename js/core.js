@@ -17,6 +17,7 @@ window.redeEditandoAtual = null;
 window.novaRedeBssidSugerida = null;
 window.novaRedeWifiSugerida = null;
 window.novaRedeConectarAposCadastro = false;
+window.wifiBancoLocalPronto = false;
 window.scanTarget = 'novo'; 
 window.appCurrentView = localStorage.getItem('wifi_pro_view_screen_v1') || 'home';
 window.appCurrentFilter = localStorage.getItem('wifi_pro_filter_v1') || 'all';
@@ -41,6 +42,18 @@ window.criarMetadadosCadastroRede = function(timestamp = Date.now()) {
 
 window.normalizarRedeTexto = function(value) {
     return String(value || '').trim().toLowerCase();
+};
+
+window.normalizarSsidWifiComparacao = function(value) {
+    let texto = String(value ?? '');
+    if (texto.length >= 2 && texto.startsWith('"') && texto.endsWith('"')) {
+        texto = texto.substring(1, texto.length - 1);
+    }
+    return typeof texto.normalize === 'function' ? texto.normalize('NFC') : texto;
+};
+
+window.ssidWifiIguais = function(a, b) {
+    return window.normalizarSsidWifiComparacao(a) === window.normalizarSsidWifiComparacao(b);
 };
 
 window.hashTextoSimples = function(value) {
@@ -578,20 +591,21 @@ window.removerDuplicatasBanco = async function() {
 };
 
 window.encontrarRedeMesmoCadastro = function(ssid, senha, bssid = null) {
-    const ssidNovo = window.normalizarRedeTexto(ssid);
+    const ssidNovo = window.normalizarSsidWifiComparacao(ssid);
+    const ssidNovoLegado = ssidNovo.trim();
     const senhaNova = String(senha || '');
     const bssidNovo = typeof window.normalizarWifiBssid === 'function'
         ? window.normalizarWifiBssid(bssid)
         : window.normalizarRedeTexto(bssid);
 
     return (window.redesEmMemoria || []).find((rede) => {
-        if (window.normalizarRedeTexto(rede.ssid) !== ssidNovo) return false;
+        const ssidExistente = window.normalizarSsidWifiComparacao(rede.ssid);
+        if (ssidExistente !== ssidNovo && (!ssidNovoLegado || ssidExistente.trim() !== ssidNovoLegado)) return false;
         if (String(rede.senha || '') !== senhaNova) return false;
         const bssidExistente = typeof window.normalizarWifiBssid === 'function'
             ? window.normalizarWifiBssid(rede.bssid)
             : window.normalizarRedeTexto(rede.bssid);
-        if (bssidNovo && bssidExistente && bssidNovo !== bssidExistente) return false;
-        if (bssidNovo && !bssidExistente) return false;
+        if (bssidNovo && bssidExistente && bssidNovo !== bssidExistente) return true;
         return true;
     });
 };
@@ -1247,7 +1261,7 @@ window.validarSenhaNovaModal = function() {
     const btnSalvar = document.getElementById('btnSalvarModal');
     if (!senhaInput || !btnSalvar) return true;
 
-    const senha = senhaInput.value.trim();
+    const senha = senhaInput.value;
     const senhaValida = senha.length >= 8;
     senhaInput.setCustomValidity(senhaValida || senha.length === 0 ? '' : 'A senha precisa ter no minimo 8 caracteres.');
     btnSalvar.disabled = !senhaValida;
@@ -1729,6 +1743,13 @@ window.addEventListener('DOMContentLoaded', async () => {
         } catch (e) {
             console.warn('Falha ao carregar banco local na abertura.', e);
         } finally {
+            window.wifiBancoLocalPronto = true;
+            window.dispatchEvent(new CustomEvent('wifi-local-db-ready', {
+                detail: { total: (window.redesEmMemoria || []).length }
+            }));
+            if (typeof window.atualizarPreScanWifiComBanco === 'function') {
+                window.atualizarPreScanWifiComBanco();
+            }
             window.atualizarDashboardLayout();
         }
     };
@@ -1939,18 +1960,17 @@ window.renderizarInterface = function(lista, radar = false) {
 };
 
 window.checarDuplicadoModal = function() {
-    const s = document.getElementById('novoSSID').value.trim(); 
-    const p = document.getElementById('novaSenha').value.trim();
+    const s = document.getElementById('novoSSID').value;
+    const p = document.getElementById('novaSenha').value;
     const bssidNovo = typeof window.normalizarWifiBssid === 'function'
         ? window.normalizarWifiBssid(window.novaRedeBssidSugerida)
         : String(window.novaRedeBssidSugerida || '').trim().toLowerCase();
     window.redeDuplicadaAtual = window.redesEmMemoria.find(r => {
-        if (r.ssid !== s || r.senha !== p) return false;
+        if (!window.ssidWifiIguais(r.ssid, s) || String(r.senha || '') !== p) return false;
         const bssidExistente = typeof window.normalizarWifiBssid === 'function'
             ? window.normalizarWifiBssid(r.bssid)
             : String(r.bssid || '').trim().toLowerCase();
-        if (bssidNovo && bssidExistente && bssidNovo !== bssidExistente) return false;
-        if (bssidNovo && !bssidExistente) return false;
+        if (bssidNovo && bssidExistente && bssidNovo !== bssidExistente) return true;
         return true;
     });
     
@@ -1991,8 +2011,8 @@ window.fecharModalEditar = function() {
 window.salvarEdicaoRede = async function() {
     window.vibrar();
     if(!window.redeEditandoAtual) return;
-    const s = document.getElementById('editSSID').value.trim();
-    const p = document.getElementById('editSenha').value.trim();
+    const s = document.getElementById('editSSID').value;
+    const p = document.getElementById('editSenha').value;
     if(!s || !p) { window.mostrarToast("Preencha o nome e a senha!"); return; }
     if(p.length < 8) { window.mostrarToast("A senha deve ter no minimo 8 caracteres!"); return; }
 
@@ -2196,9 +2216,9 @@ window.tentarConectarRedeRecemCadastrada = async function(rede, contextoWifi, co
 };
 
 window.salvarRedeLocal = async function() {
-    window.vibrar(); 
-    const s = document.getElementById('novoSSID').value.trim();
-    const p = document.getElementById('novaSenha').value.trim();
+    window.vibrar();
+    const s = document.getElementById('novoSSID').value;
+    const p = document.getElementById('novaSenha').value;
     if(!s || !p) { window.mostrarToast("Preencha os campos!"); return; }
     if(p.length < 8) {
         window.validarSenhaNovaModal();
@@ -2350,7 +2370,10 @@ window.importarListaTexto = async function() {
 
 window.normalizarBssidImportacao = function(bssid) {
     if (typeof window.normalizarWifiBssid === 'function') return window.normalizarWifiBssid(bssid);
-    const value = String(bssid || '').trim().toLowerCase();
+    let value = String(bssid || '').trim().toLowerCase().replace(/\s+/g, '').replace(/-/g, ':');
+    if (/^[0-9a-f]{12}$/.test(value)) {
+        value = value.match(/.{1,2}/g).join(':');
+    }
     if (!value || value === '02:00:00:00:00:00' || value === '00:00:00:00:00:00') return '';
     return /^[0-9a-f]{2}(:[0-9a-f]{2}){5}$/.test(value) ? value : '';
 };
@@ -2373,7 +2396,7 @@ window.parseBackupWifiTexto = function(texto) {
         if (atual && atual.ssid && atual.senha) {
             redes.push({
                 ssid: atual.ssid.trim(),
-                senha: atual.senha.trim(),
+                senha: atual.senha,
                 bssid: window.normalizarBssidImportacao(atual.bssid) || null,
                 lat: atual.lat ?? null,
                 lng: atual.lng ?? null
@@ -2419,9 +2442,9 @@ window.parseBackupWifiTexto = function(texto) {
 
         if (!atual) return;
 
-        const senha = linha.match(/^Senha:\s*(.*)$/i);
+        const senha = linhaOriginal.match(/^\s*Senha:(.*)$/i);
         if (senha) {
-            atual.senha = senha[1].trim();
+            atual.senha = senha[1].startsWith(' ') ? senha[1].slice(1) : senha[1];
             return;
         }
 
