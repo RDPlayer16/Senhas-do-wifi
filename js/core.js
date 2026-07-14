@@ -885,22 +885,40 @@ window.aplicarRuntimeLayout = function() {
             window.buscarSenhasPorPerto();
         }
     };
+    const abrirScannerWifiNativo = () => {
+        if (typeof window.fecharMenuLateral === 'function') window.fecharMenuLateral();
+        if (typeof window.abrirModalWifiReal === 'function') {
+            window.abrirModalWifiReal();
+        }
+    };
 
     const drawerWifi = document.getElementById('drawerWifiAction');
     const bottomWifi = document.getElementById('bottomWifiAction');
 
     if (bottomWifi) {
-        bottomWifi.innerHTML = '<span class="nav-icon">&#128246;</span><span class="nav-label">Scanner</span><small>Wi-Fi</small>';
-        bottomWifi.onclick = () => {
-            if (typeof window.abrirModalWifiReal === 'function') window.abrirModalWifiReal();
-        };
-        bottomWifi.removeAttribute('data-radar-button');
+        if (native) {
+            bottomWifi.innerHTML = '<span class="nav-icon">&#128246;</span><span class="nav-label">Scanner</span><small>Wi-Fi</small>';
+            bottomWifi.onclick = abrirScannerWifiNativo;
+            bottomWifi.removeAttribute('data-radar-button');
+            bottomWifi.classList.remove('radar-active');
+        } else {
+            bottomWifi.innerHTML = '<span class="nav-icon">&#8982;</span><span class="nav-label">Radar</span><small>GPS</small>';
+            bottomWifi.onclick = abrirRadar;
+            bottomWifi.setAttribute('data-radar-button', 'true');
+        }
     }
 
     if (drawerWifi) {
-        drawerWifi.innerHTML = '<span class="drawer-icon">&#8982;</span><span>Radar</span>';
-        drawerWifi.onclick = abrirRadar;
-        drawerWifi.setAttribute('data-radar-button', 'true');
+        if (native) {
+            drawerWifi.innerHTML = '<span class="drawer-icon">&#128246;</span><span>Redes Encontradas</span>';
+            drawerWifi.onclick = abrirScannerWifiNativo;
+            drawerWifi.removeAttribute('data-radar-button');
+            drawerWifi.classList.remove('radar-active');
+        } else {
+            drawerWifi.innerHTML = '<span class="drawer-icon">&#8982;</span><span>Radar</span>';
+            drawerWifi.onclick = abrirRadar;
+            drawerWifi.setAttribute('data-radar-button', 'true');
+        }
     }
 };
 

@@ -935,26 +935,43 @@ window.buscarSenhasPorPerto = function() {
         window.renderizarInterface(window.redesEmMemoria);
         return;
     }
+    if (!navigator.geolocation || typeof navigator.geolocation.watchPosition !== 'function') {
+        window.mostrandoApenasProximas = false;
+        window.radarWatchId = null;
+        window.atualizarBotoesRadar(false);
+        if (typeof window.mostrarToast === 'function') window.mostrarToast('GPS indisponivel neste navegador.');
+        return;
+    }
     window.vibrar();
     if (typeof window.fecharMapaGlobal === 'function') window.fecharMapaGlobal();
     if (typeof window.mostrarTelaApp === 'function') window.mostrarTelaApp('saved');
     window.atualizarBotoesRadar(true);
-    window.radarWatchId = navigator.geolocation.watchPosition((pos) => {
-        const { latitude, longitude } = pos.coords;
-        const proximas = window.redesEmMemoria.map(r => ({
-            ...r,
-            __coordsMapa: window.obterCoordenadasRedeMapa(r)
-        })).map(r => ({
-            ...r,
-            d: r.__coordsMapa ? window.calcularDistancia(latitude, longitude, r.__coordsMapa.lat, r.__coordsMapa.lng) : Infinity
-        })).filter(r => r.d <= 150).sort((a,b) => a.d - b.d);
-        window.mostrandoApenasProximas = true;
-        window.renderizarInterface(proximas, true);
-    }, () => {
+    try {
+        window.radarWatchId = navigator.geolocation.watchPosition((pos) => {
+            const { latitude, longitude } = pos.coords;
+            const redes = Array.isArray(window.redesEmMemoria) ? window.redesEmMemoria : [];
+            const proximas = redes.map(r => ({
+                ...r,
+                __coordsMapa: window.obterCoordenadasRedeMapa(r)
+            })).map(r => ({
+                ...r,
+                d: r.__coordsMapa ? window.calcularDistancia(latitude, longitude, r.__coordsMapa.lat, r.__coordsMapa.lng) : Infinity
+            })).filter(r => r.d <= 150).sort((a,b) => a.d - b.d);
+            window.mostrandoApenasProximas = true;
+            window.renderizarInterface(proximas, true);
+        }, () => {
+            window.mostrandoApenasProximas = false;
+            if (window.radarWatchId) navigator.geolocation.clearWatch(window.radarWatchId);
+            window.radarWatchId = null;
+            window.atualizarBotoesRadar(false);
+            if (typeof window.mostrarToast === 'function') window.mostrarToast('Permita a localizacao para usar o Radar.');
+        }, {enableHighAccuracy: true});
+    } catch (error) {
         window.mostrandoApenasProximas = false;
+        window.radarWatchId = null;
         window.atualizarBotoesRadar(false);
-        if (typeof window.mostrarToast === 'function') window.mostrarToast('Permita a localizacao para usar o Radar.');
-    }, {enableHighAccuracy: true});
+        if (typeof window.mostrarToast === 'function') window.mostrarToast('Nao foi possivel iniciar o Radar.');
+    }
 };
 
 console.log("✅ Map Engine Finalizado com Botões Restaurados!");

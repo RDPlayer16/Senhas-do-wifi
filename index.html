@@ -23,7 +23,7 @@
         </div>
         <button onclick="window.mostrarTelaApp('home')"><span class="drawer-icon">⌂</span><span>Inicio</span></button>
         <button onclick="window.mostrarTelaApp('saved')"><span class="drawer-icon">≋</span><span>Redes Salvas</span></button>
-        <button id="drawerWifiAction" onclick="window.abrirModalWifiReal()"><span class="drawer-icon">⌁</span><span>Redes Encontradas</span></button>
+        <button id="drawerWifiAction" data-radar-button onclick="window.buscarSenhasPorPerto()"><span class="drawer-icon">&#8982;</span><span>Radar</span></button>
         <button onclick="window.abrirMapaGlobal()"><span class="drawer-icon">⌖</span><span>Mapa</span></button>
         <button onclick="window.abrirModalExportar()"><span class="drawer-icon">⇪</span><span>Backup e Exportacao</span></button>
         <button class="native-only" onclick="window.abrirGerenciadorRoteador && window.abrirGerenciadorRoteador()"><span class="drawer-icon">▣</span><span>Gerenciar Roteador</span></button>
@@ -105,7 +105,7 @@
         <div class="bottom-bar-content">
             <button class="bottom-btn active" data-app-nav="home" onclick="window.mostrarTelaApp('home')"><span class="nav-icon">&#8962;</span><span class="nav-label">Inicio</span><small>Home</small></button>
             <button class="bottom-btn" data-app-nav="saved" onclick="window.mostrarTelaApp('saved')"><span class="nav-icon">&#9776;</span><span class="nav-label">Salvas</span><small>Lista</small></button>
-            <button id="bottomWifiAction" class="bottom-btn" onclick="window.abrirModalWifiReal()"><span class="nav-icon">&#128246;</span><span class="nav-label">Scanner</span><small>Wi-Fi</small></button>
+            <button id="bottomWifiAction" class="bottom-btn" data-radar-button onclick="window.buscarSenhasPorPerto()"><span class="nav-icon">&#8982;</span><span class="nav-label">Radar</span><small>GPS</small></button>
             <button class="bottom-btn" onclick="window.abrirMapaGlobal(); window.vibrar();"><span class="nav-icon">&#8982;</span><span class="nav-label">Mapa</span><small>GPS</small></button>
             <button class="bottom-btn" onclick="window.abrirMenuLateral(); window.vibrar();"><span class="nav-icon">&#9776;</span><span class="nav-label">Mais</span><small>Menu</small></button>
         </div>
