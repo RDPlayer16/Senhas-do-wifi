@@ -48,6 +48,23 @@ function isQrNativeCameraAvailable() {
     return !!(getQrNativePlugin() && window.Capacitor && window.Capacitor.isNativePlatform());
 }
 
+function esconderModaisParaScannerQr() {
+    const modalNovo = document.getElementById('modalNovaRede');
+    const modalEditar = document.getElementById('modalEditarRede');
+    if (modalNovo) modalNovo.style.display = 'none';
+    if (modalEditar) modalEditar.style.display = 'none';
+}
+
+function restaurarModalAposScannerQr(target) {
+    if (target === 'editar' && window.redeEditandoAtual) {
+        const modalEditar = document.getElementById('modalEditarRede');
+        if (modalEditar) modalEditar.style.display = 'flex';
+    } else if (target === 'novo') {
+        const modalNovo = document.getElementById('modalNovaRede');
+        if (modalNovo) modalNovo.style.display = 'flex';
+    }
+}
+
 async function garantirPermissaoCameraNativa() {
     if (!window.Capacitor || !window.Capacitor.isNativePlatform || !window.Capacitor.isNativePlatform()) {
         return true;
@@ -185,39 +202,24 @@ function base64ToFile(base64, fileName, mimeType) {
 
 async function escanearQrComCameraNativa(target) {
     const plugin = getQrNativePlugin();
-    if (!plugin || typeof plugin.captureQrPhoto !== 'function') return false;
-    if (typeof Html5Qrcode === 'undefined') {
-        window.mostrarToast("Biblioteca QR nao carregada.");
-        return true;
-    }
+    if (!plugin || typeof plugin.scanQrCode !== 'function') return false;
 
-    window.fecharModal();
-    window.fecharModalEditar();
-    document.getElementById('modalScanner').style.display = 'flex';
-    document.getElementById('reader').innerHTML = '<div style="padding: 30px; text-align: center; color: white;">Abrindo camera nativa...</div>';
-
-    const html5QrCode = new Html5Qrcode("reader");
+    esconderModaisParaScannerQr();
     try {
-        const photo = await plugin.captureQrPhoto();
-        document.getElementById('reader').innerHTML = '<div style="padding: 30px; text-align: center; color: white;">Lendo QR da foto...</div>';
-        const file = base64ToFile(photo.base64, photo.fileName || 'qr_native.jpg', photo.mimeType || 'image/jpeg');
-
-        try {
-            const sharpFile = await processarImagemParaQR(file);
-            const msg = await html5QrCode.scanFile(sharpFile, true);
-            window.processarTextoQR(msg, target, 'camera');
-        } catch (err1) {
-            const msg = await html5QrCode.scanFile(file, true);
-            window.processarTextoQR(msg, target, 'camera');
+        const result = await plugin.scanQrCode({ camera: 'rear' });
+        const text = result && (result.text || result.rawValue || result.value || '');
+        if (text) {
+            window.processarTextoQR(text, target, 'camera');
+        } else {
+            window.mostrarToast("QR Code nao reconhecido.");
         }
     } catch (error) {
-        const msg = error && error.message ? error.message : "QR Code nao reconhecido pela camera nativa.";
-        window.mostrarToast(msg);
+        const msg = error && error.message ? error.message : "";
+        if (!/cancelad|cancel/i.test(msg)) {
+            window.mostrarToast(msg || "Nao foi possivel abrir o leitor nativo.");
+        }
     } finally {
-        try {
-            await html5QrCode.clear();
-        } catch (e) {}
-        window.fecharScanner(true);
+        restaurarModalAposScannerQr(target);
     }
 
     return true;
@@ -250,6 +252,12 @@ window.abrirScannerCamera = function(target = 'novo') {
 // FILTRO DE NITIDEZ (SHARPEN) - Destrói os artefatos de compressão da MIUI
 window.abrirScannerCamera = async function(target = 'novo') {
     window.scanTarget = target;
+
+    if (isQrNativeCameraAvailable()) {
+        const handledNative = await escanearQrComCameraNativa(target);
+        if (handledNative) return;
+    }
+
     if (typeof Html5Qrcode === 'undefined') { alert("Biblioteca QR nao carregada."); return; }
 
     const cameraLiberada = await garantirPermissaoCameraNativa();
@@ -258,8 +266,7 @@ window.abrirScannerCamera = async function(target = 'novo') {
         return;
     }
 
-    window.fecharModal();
-    window.fecharModalEditar();
+    esconderModaisParaScannerQr();
 
     const modal = document.getElementById('modalScanner');
     const reader = document.getElementById('reader');
@@ -374,8 +381,7 @@ window.escanearImagemQR = async function(e, target = 'novo') {
     if (typeof Html5Qrcode === 'undefined') { alert("Erro: Biblioteca QR não carregada."); return; }
     
     // Oculta os modais iniciais para focar no processamento
-    window.fecharModal(); 
-    window.fecharModalEditar();
+    esconderModaisParaScannerQr();
     
     document.getElementById('modalScanner').style.display = 'flex';
     document.getElementById('reader').innerHTML = '<div style="padding: 30px; text-align: center; color: white;">Extraindo dados da imagem...</div>';

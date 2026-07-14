@@ -9,7 +9,11 @@
     window.wifiScanEmAndamento = false;
     window.wifiPromptSsidIgnorado = null;
     window.wifiBssidPromptKey = null;
+    window.wifiCurrentPromptTimer = null;
+    window.wifiBssidMismatchPromptKey = null;
     window.wifiSugestaoAutomaticaKey = null;
+    window.wifiLocalizacaoPromptKey = null;
+    window.wifiLocalizacaoIgnoradaKey = null;
 
     function getWifiPlugin() {
         if (!window.Capacitor) return null;
@@ -37,16 +41,8 @@
 
     window.normalizarWifiBssid = normalizarBssid;
 
-    function normalizarSsidComparacao(ssid) {
-        let value = String(ssid ?? '');
-        if (value.length >= 2 && value.startsWith('"') && value.endsWith('"')) {
-            value = value.substring(1, value.length - 1);
-        }
-        return typeof value.normalize === 'function' ? value.normalize('NFC') : value;
-    }
-
     function mesmoSsid(a, b) {
-        return normalizarSsidComparacao(a) === normalizarSsidComparacao(b);
+        return String(a || '') === String(b || '');
     }
 
     function getNetworkSsid(networkOrSsid) {
@@ -61,15 +57,14 @@
         return normalizarBssid(rede && rede.bssid);
     }
 
-    function redesComMesmoSsid(ssid) {
-        const alvo = normalizarSsidComparacao(ssid);
-        const redes = window.redesEmMemoria || [];
-        const exatas = redes.filter(rede => normalizarSsidComparacao(rede.ssid) === alvo);
-        if (exatas.length) return exatas;
+    function redeTemLocalizacao(rede) {
+        const lat = parseFloat(String(rede && rede.lat).replace(',', '.'));
+        const lng = parseFloat(String(rede && rede.lng).replace(',', '.'));
+        return Number.isFinite(lat) && Number.isFinite(lng);
+    }
 
-        const alvoLegado = alvo.trim();
-        if (!alvoLegado) return [];
-        return redes.filter(rede => normalizarSsidComparacao(rede.ssid).trim() === alvoLegado);
+    function redesComMesmoSsid(ssid) {
+        return (window.redesEmMemoria || []).filter(rede => mesmoSsid(rede.ssid, ssid));
     }
 
     function redesSalvasCompativeis(networkOrSsid) {
@@ -88,6 +83,18 @@
             return redeBssid && redeBssid !== bssid;
         });
         return [...semBssid, ...bssidDiferente];
+    }
+
+    function redesSemLocalizacaoCompativeis(networkOrSsid) {
+        const candidatos = redesSalvasCompativeis(networkOrSsid);
+        const bssid = getNetworkBssid(networkOrSsid);
+
+        if (bssid) {
+            const exatas = candidatos.filter(rede => getRedeBssid(rede) === bssid);
+            if (exatas.length) return exatas.filter(rede => !redeTemLocalizacao(rede));
+        }
+
+        return candidatos.filter(rede => !redeTemLocalizacao(rede));
     }
 
     function findRedeSalva(networkOrSsid) {
@@ -119,6 +126,7 @@
 
     function rotuloAcaoRedeSalva(network, candidatos) {
         if (correspondeConexaoAtual(network)) return 'Abrir Wi-Fi';
+        if (temBssidDiferenteDoAtual(network, candidatos)) return 'Corrigir';
         return deveEscolherRede(network, candidatos) ? 'Escolher' : 'Adicionar';
     }
 
@@ -156,6 +164,25 @@
         if (value >= -55) return 'Sinal forte';
         if (value >= -70) return 'Sinal bom';
         return 'Sinal fraco';
+    }
+
+    function formatarDbm(level) {
+        if (typeof window.formatarWifiDbm === 'function') return window.formatarWifiDbm(level);
+        const value = Number(level);
+        if (!Number.isFinite(value)) return 'Sinal n/d';
+        return `${Math.round(value)} dBm`;
+    }
+
+    function normalizarConexaoAtual(connection) {
+        if (!connection || typeof connection !== 'object') return connection;
+        const level = Number(connection.level);
+        const rssi = Number(connection.rssi);
+        if (!Number.isFinite(level) && Number.isFinite(rssi)) {
+            connection.level = rssi;
+        } else if (Number.isFinite(level) && !Number.isFinite(rssi)) {
+            connection.rssi = level;
+        }
+        return connection;
     }
 
     function setResumo(texto) {
@@ -213,7 +240,119 @@
 
     function esconderPromptRedeAtual() {
         const prompt = document.getElementById('wifiCurrentPrompt');
+        if (window.wifiCurrentPromptTimer) {
+            clearTimeout(window.wifiCurrentPromptTimer);
+            window.wifiCurrentPromptTimer = null;
+        }
         if (prompt) prompt.classList.remove('show');
+        if (typeof window.atualizarElevacaoBotaoFlutuante === 'function') {
+            window.atualizarElevacaoBotaoFlutuante();
+        }
+    }
+
+    function mostrarPromptTemporizado(prompt) {
+        if (!prompt) return;
+        if (window.wifiCurrentPromptTimer) clearTimeout(window.wifiCurrentPromptTimer);
+        prompt.classList.remove('show');
+        void prompt.offsetWidth;
+        mostrarPromptTemporizado(prompt);
+        if (typeof window.atualizarElevacaoBotaoFlutuante === 'function') {
+            window.atualizarElevacaoBotaoFlutuante();
+        }
+        window.wifiCurrentPromptTimer = setTimeout(() => {
+            esconderPromptRedeAtual();
+        }, 10000);
+    }
+
+    function chavePromptLocalizacao(connection, candidatos) {
+        const ids = (candidatos || []).map(rede => rede.id || rede.ssid).join(',');
+        return `${connection && connection.ssid ? connection.ssid : ''}|${normalizarBssid(connection && connection.bssid) || 'ssid'}|${ids}`;
+    }
+
+    async function escolherRedeParaLocalizacao(connection, candidatos) {
+        if (!candidatos.length) return null;
+        if (candidatos.length === 1) return candidatos[0];
+
+        const bssid = normalizarBssid(connection && connection.bssid);
+        if (bssid) {
+            const exatas = candidatos.filter(rede => getRedeBssid(rede) === bssid);
+            if (exatas.length === 1) return exatas[0];
+        }
+
+        return escolherRedeEmPopup(
+            `Adicionar local de ${connection.ssid}`,
+            'Existem redes salvas com o mesmo nome. Escolha qual cadastro deve receber a localizacao atual.',
+            candidatos
+        );
+    }
+
+    async function adicionarLocalizacaoRedeAtual(rede, connection, button = null) {
+        if (!rede || !rede.id) return;
+
+        const originalText = button ? button.textContent : '';
+        if (button) {
+            button.disabled = true;
+            button.textContent = 'Obtendo GPS...';
+        }
+
+        try {
+            const pos = await new Promise((resolve, reject) => navigator.geolocation.getCurrentPosition(resolve, reject, {
+                enableHighAccuracy: true,
+                timeout: 9000,
+                maximumAge: 0
+            }));
+            const lat = pos.coords.latitude;
+            const lng = pos.coords.longitude;
+            await salvarPatchRede(rede, { lat, lng });
+            window.wifiLocalizacaoIgnoradaKey = null;
+            esconderPromptRedeAtual();
+            if (typeof window.mostrarToast === 'function') {
+                window.mostrarToast('Localizacao adicionada a rede atual.');
+            }
+            if (connection) renderizarConexaoAtual(connection);
+        } catch (error) {
+            if (typeof window.mostrarToast === 'function') {
+                window.mostrarToast('GPS falhou. Verifique a permissao de localizacao.');
+            }
+        } finally {
+            if (button) {
+                button.disabled = false;
+                button.textContent = originalText || 'Adicionar local';
+            }
+        }
+    }
+
+    function mostrarPromptLocalizacaoRedeAtual(connection, candidatos) {
+        const prompt = document.getElementById('wifiCurrentPrompt');
+        const ssidEl = document.getElementById('wifiCurrentPromptSsid');
+        const addButton = document.getElementById('btnWifiCurrentPromptAdd');
+        const dismissButton = document.getElementById('btnWifiCurrentPromptDismiss');
+        const labelEl = prompt ? prompt.querySelector('.wifi-current-prompt-copy span') : null;
+        const helperEl = prompt ? prompt.querySelector('.wifi-current-prompt-copy small') : null;
+
+        if (!prompt || !ssidEl || !addButton || !dismissButton || !connection || !candidatos.length) return;
+
+        const key = chavePromptLocalizacao(connection, candidatos);
+        if (window.wifiLocalizacaoIgnoradaKey === key) {
+            esconderPromptRedeAtual();
+            return;
+        }
+
+        window.wifiLocalizacaoPromptKey = key;
+        if (labelEl) labelEl.textContent = 'Rede atual sem localizacao';
+        ssidEl.textContent = connection.ssid;
+        if (helperEl) helperEl.textContent = 'Esta rede ja esta salva no banco. Adicione o GPS atual para ela aparecer corretamente no mapa.';
+        addButton.textContent = 'Adicionar local';
+        dismissButton.textContent = 'Agora nao';
+        addButton.onclick = async () => {
+            const rede = await escolherRedeParaLocalizacao(connection, candidatos);
+            if (rede) await adicionarLocalizacaoRedeAtual(rede, connection, addButton);
+        };
+        dismissButton.onclick = () => {
+            window.wifiLocalizacaoIgnoradaKey = key;
+            esconderPromptRedeAtual();
+        };
+        mostrarPromptTemporizado(prompt);
     }
 
     function atualizarPromptRedeAtual(connection = window.wifiAtualConexao) {
@@ -221,6 +360,8 @@
         const ssidEl = document.getElementById('wifiCurrentPromptSsid');
         const addButton = document.getElementById('btnWifiCurrentPromptAdd');
         const dismissButton = document.getElementById('btnWifiCurrentPromptDismiss');
+        const labelEl = prompt ? prompt.querySelector('.wifi-current-prompt-copy span') : null;
+        const helperEl = prompt ? prompt.querySelector('.wifi-current-prompt-copy small') : null;
 
         if (!prompt || !ssidEl || !addButton || !dismissButton) return;
 
@@ -231,6 +372,11 @@
 
         const ssid = connection.ssid;
         if (findRedeSalva(connection)) {
+            const semLocalizacao = redesSemLocalizacaoCompativeis(connection);
+            if (semLocalizacao.length) {
+                mostrarPromptLocalizacaoRedeAtual(connection, semLocalizacao);
+                return;
+            }
             esconderPromptRedeAtual();
             return;
         }
@@ -240,7 +386,11 @@
             return;
         }
 
+        if (labelEl) labelEl.textContent = 'Rede atual nao salva';
         ssidEl.textContent = ssid;
+        if (helperEl) helperEl.textContent = 'Adicione esta rede ao banco para usar a conexao rapida depois.';
+        addButton.textContent = 'Adicionar';
+        dismissButton.textContent = 'Agora nao';
         addButton.onclick = () => abrirCadastroSsid(ssid, connection.bssid, connection, { conectarAposSalvar: false });
         dismissButton.onclick = () => {
             window.wifiPromptSsidIgnorado = ssid;
@@ -270,7 +420,8 @@
                 return;
             }
 
-            const rede = await escolherRedeParaNetwork(network, candidatos);
+            const redeEscolhida = await escolherRedeParaNetwork(network, candidatos);
+            const rede = await corrigirBssidSeNecessario(redeEscolhida, network);
             if (rede) await window.adicionarRedeNoCelular(rede, network, button);
         });
         return button;
@@ -337,6 +488,106 @@
         });
     }
 
+    function temBssidDiferenteDoAtual(network, candidatos = redesSalvasCompativeis(network)) {
+        const bssidAtual = normalizarBssid(network && network.bssid);
+        if (!bssidAtual || temMatchExatoBssid(network, candidatos)) return false;
+        return candidatos.some(rede => {
+            const salvo = getRedeBssid(rede);
+            return salvo && salvo !== bssidAtual;
+        });
+    }
+
+    function abrirPopupCorrecaoBssid(rede, bssidAtual) {
+        return new Promise((resolve) => {
+            const bssidSalvo = getRedeBssid(rede);
+            if (!rede || !bssidAtual || !bssidSalvo || bssidSalvo === bssidAtual) {
+                resolve('use');
+                return;
+            }
+
+            const overlay = document.createElement('div');
+            overlay.className = 'wifi-choice-overlay';
+
+            const modal = document.createElement('div');
+            modal.className = 'wifi-choice-modal';
+
+            const title = document.createElement('h3');
+            title.textContent = 'BSSID errado?';
+
+            const desc = document.createElement('p');
+            desc.textContent = `Esta rede esta salva com ${bssidSalvo}, mas o roteador encontrado usa ${bssidAtual}.`;
+
+            const list = document.createElement('div');
+            list.className = 'wifi-choice-list';
+            let autoCloseTimer = null;
+
+            const close = (acao) => {
+                if (autoCloseTimer) {
+                    clearTimeout(autoCloseTimer);
+                    autoCloseTimer = null;
+                }
+                overlay.remove();
+                resolve(acao || 'cancel');
+            };
+
+            const criarOpcao = (label, detail, action) => {
+                const button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'wifi-choice-option';
+                const strong = document.createElement('strong');
+                strong.textContent = label;
+                const span = document.createElement('span');
+                span.textContent = detail;
+                button.appendChild(strong);
+                button.appendChild(span);
+                button.addEventListener('click', () => close(action));
+                list.appendChild(button);
+            };
+
+            criarOpcao('Corrigir BSSID', `Trocar para ${bssidAtual}.`, 'fix');
+            criarOpcao('Remover BSSID', 'Deixar esta senha sem roteador fixo.', 'remove');
+            criarOpcao('Usar mesmo assim', 'Tentar adicionar sem alterar o cadastro.', 'use');
+
+            const cancel = document.createElement('button');
+            cancel.type = 'button';
+            cancel.className = 'wifi-choice-cancel';
+            cancel.textContent = 'Cancelar';
+            cancel.addEventListener('click', () => close('cancel'));
+
+            const progress = document.createElement('div');
+            progress.className = 'wifi-choice-progress';
+            const progressBar = document.createElement('span');
+            progress.appendChild(progressBar);
+
+            modal.appendChild(title);
+            modal.appendChild(desc);
+            modal.appendChild(list);
+            modal.appendChild(cancel);
+            modal.appendChild(progress);
+            overlay.appendChild(modal);
+            document.body.appendChild(overlay);
+            autoCloseTimer = setTimeout(() => close('cancel'), 10000);
+        });
+    }
+
+    async function corrigirBssidSeNecessario(rede, network) {
+        const bssidAtual = normalizarBssid(network && network.bssid);
+        const bssidSalvo = getRedeBssid(rede);
+        if (!rede || !bssidAtual || !bssidSalvo || bssidSalvo === bssidAtual) return rede;
+
+        const acao = await abrirPopupCorrecaoBssid(rede, bssidAtual);
+        if (acao === 'cancel') return null;
+        if (acao === 'fix') {
+            await salvarPatchRede(rede, { bssid: bssidAtual });
+            return { ...rede, bssid: bssidAtual };
+        }
+        if (acao === 'remove') {
+            await salvarPatchRede(rede, { bssid: null });
+            return { ...rede, bssid: null, __wifiIgnoreBssid: true };
+        }
+        return rede;
+    }
+
     async function escolherRedeParaNetwork(network, candidatos = redesSalvasCompativeis(network)) {
         if (!candidatos.length) return null;
         if (!deveEscolherRede(network, candidatos)) return candidatos[0];
@@ -373,7 +624,7 @@
         const meta = document.createElement('div');
         meta.className = 'wifi-row-meta';
         const bssid = normalizarBssid(network.bssid);
-        meta.textContent = `${formatarSeguranca(network.capabilities)} - ${formatarSinal(network.level)} - ${network.level || 0} dBm${bssid ? ' - ' + bssid : ''}`;
+        meta.textContent = `${formatarSeguranca(network.capabilities)} - ${formatarSinal(network.level)} - ${formatarDbm(network.level)}${bssid ? ' - ' + bssid : ''}`;
 
         info.appendChild(top);
         info.appendChild(meta);
@@ -443,6 +694,7 @@
 
         const candidatos = redesSalvasCompativeis(connection);
         const rede = candidatos[0] || null;
+        const semLocalizacao = rede ? redesSemLocalizacaoCompativeis(connection) : [];
         ssidEl.textContent = connection.ssid;
         if (routerAction) {
             routerAction.textContent = 'Gerenciar roteador';
@@ -453,15 +705,26 @@
         if (rede) {
             card.classList.add('wifi-current-saved');
             const bssid = normalizarBssid(connection.bssid);
-            statusEl.textContent = getRedeBssid(rede)
-                ? 'Esta rede ja esta salva com BSSID no banco.'
-                : 'Esta rede ja esta salva no banco sem BSSID.';
+            statusEl.textContent = semLocalizacao.length
+                ? `${formatarDbm(connection.level)}${bssid ? ' - ' + bssid : ''} - salva sem localizacao.`
+                : getRedeBssid(rede)
+                ? `${formatarDbm(connection.level)}${bssid ? ' - ' + bssid : ''} - salva com BSSID no banco.`
+                : `${formatarDbm(connection.level)}${bssid ? ' - ' + bssid : ''} - salva sem BSSID no banco.`;
+            if (semLocalizacao.length) {
+                action.textContent = 'Adicionar local';
+                action.style.display = 'flex';
+                action.onclick = async () => {
+                    const escolhida = await escolherRedeParaLocalizacao(connection, semLocalizacao);
+                    if (escolhida) await adicionarLocalizacaoRedeAtual(escolhida, connection, action);
+                };
+            }
             if (bssid && !getRedeBssid(rede)) {
                 oferecerAssociacaoBssid(connection, candidatos);
             }
         } else {
             card.classList.add('wifi-current-missing');
-            statusEl.textContent = 'Esta rede ainda nao esta salva no banco.';
+            const bssid = normalizarBssid(connection.bssid);
+            statusEl.textContent = `${formatarDbm(connection.level)}${bssid ? ' - ' + bssid : ''} - ainda nao salva no banco.`;
             action.textContent = 'Salvar atual';
             action.style.display = 'flex';
             action.onclick = () => abrirCadastroSsid(connection.ssid, connection.bssid, connection, { conectarAposSalvar: false });
@@ -496,10 +759,13 @@
         }
         if (typeof window.registrarOperacaoBanco === 'function') {
             const redeAtualizada = (window.redesEmMemoria || []).find(item => item.id === id) || rede;
-            const tipo = patch.bssid !== undefined ? 'bssid_associado' : 'rede_atualizada';
+            const atualizouLocalizacao = patch.lat !== undefined || patch.lng !== undefined;
+            const tipo = patch.bssid !== undefined
+                ? 'bssid_associado'
+                : (atualizouLocalizacao ? 'localizacao_atualizada' : 'rede_atualizada');
             const mensagem = patch.bssid !== undefined
                 ? `BSSID associado: ${redeAtualizada.ssid}`
-                : `Rede atualizada: ${redeAtualizada.ssid}`;
+                : (atualizouLocalizacao ? `Localizacao atualizada: ${redeAtualizada.ssid}` : `Rede atualizada: ${redeAtualizada.ssid}`);
             window.registrarOperacaoBanco(tipo, mensagem, redeAtualizada, {
                 campos: Object.keys(patch || {}),
                 patch
@@ -567,6 +833,30 @@
         });
     }
 
+    function agendarAvisoBssidErradoAposTentativa(rede, network) {
+        if (rede && rede.__wifiIgnoreBssid) return;
+        const esperado = normalizarBssid(network && network.bssid) || getRedeBssid(rede);
+        if (!rede || !esperado) return;
+
+        [8000, 14000].forEach(delay => {
+            setTimeout(async () => {
+                const connection = await window.verificarWifiAtual({ silent: true });
+                if (!connection || !connection.connected || !mesmoSsid(connection.ssid, rede.ssid)) return;
+                const atual = normalizarBssid(connection.bssid);
+                if (!atual || atual === esperado) return;
+
+                const promptKey = `${rede.id || rede.ssid}|${esperado}|${atual}`;
+                if (window.wifiBssidMismatchPromptKey === promptKey) return;
+                window.wifiBssidMismatchPromptKey = promptKey;
+
+                const corrigida = await corrigirBssidSeNecessario(rede, { ...network, bssid: atual });
+                if (corrigida && typeof window.mostrarToast === 'function') {
+                    window.mostrarToast('BSSID verificado.');
+                }
+            }, delay);
+        });
+    }
+
     window.abrirGerenciadorRoteador = async function(desktop = false) {
         if (typeof window.fecharMenuLateral === 'function') window.fecharMenuLateral();
         const plugin = getWifiPlugin();
@@ -623,7 +913,8 @@
         const ok = confirm(`Rede salva proxima encontrada:\n\n${melhor.ssid} (${sinal})\n\nDeseja adicionar ao celular agora?`);
         if (!ok) return;
 
-        const rede = await escolherRedeParaNetwork(melhor, candidatos);
+        const redeEscolhida = await escolherRedeParaNetwork(melhor, candidatos);
+        const rede = await corrigirBssidSeNecessario(redeEscolhida, melhor);
         if (rede) {
             await window.adicionarRedeNoCelular(rede, melhor, null);
         }
@@ -693,7 +984,7 @@
         }
 
         try {
-            const connection = await plugin.getCurrentConnection();
+            const connection = normalizarConexaoAtual(await plugin.getCurrentConnection());
             window.wifiAtualConexao = connection;
             renderizarConexaoAtual(connection);
             return connection;
@@ -843,7 +1134,7 @@
         }
 
         try {
-            const bssid = normalizarBssid(network && network.bssid) || getRedeBssid(rede);
+            const bssid = rede && rede.__wifiIgnoreBssid ? '' : (normalizarBssid(network && network.bssid) || getRedeBssid(rede));
             const result = await plugin.saveNetwork({
                 ssid: rede.ssid,
                 password: rede.senha || '',
@@ -863,6 +1154,7 @@
 
             if (button) button.textContent = 'Abrindo Wi-Fi...';
             await abrirWifiDepoisDeAdicionar(plugin, rede, result);
+            agendarAvisoBssidErradoAposTentativa(rede, network);
         } catch (error) {
             const msg = error && error.message ? error.message : 'Falha ao adicionar rede no celular.';
             window.mostrarToast(msg);
@@ -911,7 +1203,7 @@
         }
 
         try {
-            const bssid = normalizarBssid(network && network.bssid) || getRedeBssid(rede);
+            const bssid = rede && rede.__wifiIgnoreBssid ? '' : (normalizarBssid(network && network.bssid) || getRedeBssid(rede));
             const payload = {
                 ssid: rede.ssid,
                 password: rede.senha,
@@ -955,6 +1247,7 @@
             }
 
             agendarAssociacaoBssidAposConexao(rede, network);
+            agendarAvisoBssidErradoAposTentativa(rede, network);
         } catch (error) {
             const msg = error && error.message ? error.message : 'Falha ao conectar.';
             window.mostrarToast(msg);

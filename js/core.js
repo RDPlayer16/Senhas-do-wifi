@@ -17,17 +17,22 @@ window.redeEditandoAtual = null;
 window.novaRedeBssidSugerida = null;
 window.novaRedeWifiSugerida = null;
 window.novaRedeConectarAposCadastro = false;
-window.wifiBancoLocalPronto = false;
 window.scanTarget = 'novo'; 
 window.appCurrentView = localStorage.getItem('wifi_pro_view_screen_v1') || 'home';
 window.appCurrentFilter = localStorage.getItem('wifi_pro_filter_v1') || 'all';
-if (!['all', 'recent'].includes(window.appCurrentFilter)) window.appCurrentFilter = 'all';
+if (!['all', 'recent', 'mapped', 'bssid'].includes(window.appCurrentFilter)) window.appCurrentFilter = 'all';
 const storedThemeMode = localStorage.getItem('wifi_pro_theme_v1');
 window.appThemeMode = ['dark', 'light', 'auto'].includes(storedThemeMode) ? storedThemeMode : 'auto';
 window.appDeveloperMode = localStorage.getItem('wifi_pro_developer_v1') === 'true';
 
 window.isNativeRuntime = function() {
     return !!(window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform());
+};
+
+window.formatarWifiDbm = function(level) {
+    const value = Number(level);
+    if (!Number.isFinite(value)) return 'Sinal n/d';
+    return `${Math.round(value)} dBm`;
 };
 
 window.criarMetadadosCadastroRede = function(timestamp = Date.now()) {
@@ -42,18 +47,6 @@ window.criarMetadadosCadastroRede = function(timestamp = Date.now()) {
 
 window.normalizarRedeTexto = function(value) {
     return String(value || '').trim().toLowerCase();
-};
-
-window.normalizarSsidWifiComparacao = function(value) {
-    let texto = String(value ?? '');
-    if (texto.length >= 2 && texto.startsWith('"') && texto.endsWith('"')) {
-        texto = texto.substring(1, texto.length - 1);
-    }
-    return typeof texto.normalize === 'function' ? texto.normalize('NFC') : texto;
-};
-
-window.ssidWifiIguais = function(a, b) {
-    return window.normalizarSsidWifiComparacao(a) === window.normalizarSsidWifiComparacao(b);
 };
 
 window.hashTextoSimples = function(value) {
@@ -591,21 +584,20 @@ window.removerDuplicatasBanco = async function() {
 };
 
 window.encontrarRedeMesmoCadastro = function(ssid, senha, bssid = null) {
-    const ssidNovo = window.normalizarSsidWifiComparacao(ssid);
-    const ssidNovoLegado = ssidNovo.trim();
+    const ssidNovo = window.normalizarRedeTexto(ssid);
     const senhaNova = String(senha || '');
     const bssidNovo = typeof window.normalizarWifiBssid === 'function'
         ? window.normalizarWifiBssid(bssid)
         : window.normalizarRedeTexto(bssid);
 
     return (window.redesEmMemoria || []).find((rede) => {
-        const ssidExistente = window.normalizarSsidWifiComparacao(rede.ssid);
-        if (ssidExistente !== ssidNovo && (!ssidNovoLegado || ssidExistente.trim() !== ssidNovoLegado)) return false;
+        if (window.normalizarRedeTexto(rede.ssid) !== ssidNovo) return false;
         if (String(rede.senha || '') !== senhaNova) return false;
         const bssidExistente = typeof window.normalizarWifiBssid === 'function'
             ? window.normalizarWifiBssid(rede.bssid)
             : window.normalizarRedeTexto(rede.bssid);
-        if (bssidNovo && bssidExistente && bssidNovo !== bssidExistente) return true;
+        if (bssidNovo && bssidExistente && bssidNovo !== bssidExistente) return false;
+        if (bssidNovo && !bssidExistente) return false;
         return true;
     });
 };
@@ -896,27 +888,13 @@ window.aplicarRuntimeLayout = function() {
 
     const drawerWifi = document.getElementById('drawerWifiAction');
     const bottomWifi = document.getElementById('bottomWifiAction');
-    const homeRouter = document.getElementById('btnHomeManageRouter');
 
-    if (homeRouter && !native) {
-        homeRouter.disabled = false;
-        homeRouter.onclick = () => {
-            if (typeof window.abrirModalGerenciarRoteador === 'function') {
-                window.abrirModalGerenciarRoteador();
-            }
-        };
-    }
-
-    if (bottomWifi && native) {
+    if (bottomWifi) {
         bottomWifi.innerHTML = '<span class="nav-icon">&#128246;</span><span class="nav-label">Scanner</span><small>Wi-Fi</small>';
         bottomWifi.onclick = () => {
             if (typeof window.abrirModalWifiReal === 'function') window.abrirModalWifiReal();
         };
         bottomWifi.removeAttribute('data-radar-button');
-    } else if (bottomWifi) {
-        bottomWifi.innerHTML = '<span class="nav-icon">&#8982;</span><span class="nav-label">Radar</span><small>GPS</small>';
-        bottomWifi.onclick = abrirRadar;
-        bottomWifi.setAttribute('data-radar-button', 'true');
     }
 
     if (drawerWifi) {
@@ -987,6 +965,22 @@ window.filtrarListaPainel = function(lista, radar = false) {
     if (window.appCurrentFilter === 'recent') {
         return window.obterRedesRecentes(base);
     }
+    if (window.appCurrentFilter === 'mapped') {
+        return base.filter(rede => {
+            if (typeof window.obterCoordenadasRedeMapa === 'function') return !!window.obterCoordenadasRedeMapa(rede);
+            const lat = window.parseCoord ? window.parseCoord(rede.lat) : parseFloat(String(rede.lat).replace(',', '.'));
+            const lng = window.parseCoord ? window.parseCoord(rede.lng) : parseFloat(String(rede.lng).replace(',', '.'));
+            return Number.isFinite(lat) && Number.isFinite(lng);
+        });
+    }
+    if (window.appCurrentFilter === 'bssid') {
+        return base.filter(rede => {
+            const bssid = typeof window.normalizarWifiBssid === 'function'
+                ? window.normalizarWifiBssid(rede.bssid)
+                : String(rede.bssid || '').trim();
+            return !!bssid;
+        });
+    }
     return base;
 };
 
@@ -1015,7 +1009,7 @@ window.getRedeRecentTimestamp = function(rede) {
 };
 
 window.filtrarPainel = function(filter) {
-    window.appCurrentFilter = ['all', 'recent'].includes(filter) ? filter : 'all';
+    window.appCurrentFilter = ['all', 'recent', 'mapped', 'bssid'].includes(filter) ? filter : 'all';
     localStorage.setItem('wifi_pro_filter_v1', window.appCurrentFilter);
     document.querySelectorAll('.filter-tab').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.filter === window.appCurrentFilter);
@@ -1029,7 +1023,18 @@ window.filtrarPainel = function(filter) {
 
 window.atualizarDashboardLayout = function() {
     const redes = window.redesEmMemoria || [];
-    const mapped = redes.filter(rede => rede.lat && rede.lng).length;
+    const mapped = redes.filter(rede => {
+        if (typeof window.obterCoordenadasRedeMapa === 'function') return !!window.obterCoordenadasRedeMapa(rede);
+        const lat = window.parseCoord ? window.parseCoord(rede.lat) : parseFloat(String(rede.lat).replace(',', '.'));
+        const lng = window.parseCoord ? window.parseCoord(rede.lng) : parseFloat(String(rede.lng).replace(',', '.'));
+        return Number.isFinite(lat) && Number.isFinite(lng);
+    }).length;
+    const withBssid = redes.filter(rede => {
+        const bssid = typeof window.normalizarWifiBssid === 'function'
+            ? window.normalizarWifiBssid(rede.bssid)
+            : String(rede.bssid || '').trim();
+        return !!bssid;
+    }).length;
     const found = Array.isArray(window.nativeWifiUltimoScan) ? window.nativeWifiUltimoScan.length : 0;
     const recent = window.obterRedesRecentes(redes).length;
 
@@ -1043,12 +1048,18 @@ window.atualizarDashboardLayout = function() {
     setText('statMapped', mapped);
     setText('tabAllCount', redes.length);
     setText('tabRecentCount', recent);
+    setText('tabMappedCount', mapped);
+    setText('tabBssidCount', withBssid);
 
     const subtitle = document.getElementById('listSubtitle');
     if (subtitle) {
-        subtitle.textContent = window.appCurrentFilter === 'recent'
-            ? 'Ultimas 10 redes cadastradas'
-            : 'Todas as redes cadastradas';
+        const subtitles = {
+            all: 'Todas as redes cadastradas',
+            recent: 'Ultimas 10 redes cadastradas',
+            mapped: 'Redes com localizacao salva',
+            bssid: 'Redes com BSSID salvo'
+        };
+        subtitle.textContent = subtitles[window.appCurrentFilter] || subtitles.all;
     }
 
     const ssidEl = document.getElementById('dashboardCurrentSsid');
@@ -1062,19 +1073,20 @@ window.atualizarDashboardLayout = function() {
             if (labelEl) labelEl.textContent = 'Resumo PWA';
             ssidEl.textContent = `${redes.length} redes salvas`;
             metaEl.textContent = 'Use o Radar por GPS ou cadastre uma nova rede manualmente.';
-            if (routerBtn) routerBtn.disabled = false;
+            if (routerBtn) routerBtn.disabled = true;
             if (saveBtn) saveBtn.disabled = true;
         } else if (current && current.connected && current.ssid) {
             if (labelEl) labelEl.textContent = 'Rede Atual';
             ssidEl.textContent = current.ssid;
-            metaEl.textContent = `${current.level || 'Sinal n/d'} dBm${current.bssid ? ' - ' + current.bssid : ''}`;
+            const currentLevel = Number.isFinite(Number(current.level)) ? current.level : current.rssi;
+            metaEl.textContent = `${window.formatarWifiDbm(currentLevel)}${current.bssid ? ' - ' + current.bssid : ''}`;
             if (routerBtn) routerBtn.disabled = false;
             if (saveBtn) saveBtn.disabled = !!(window.redesEmMemoria || []).find(rede => rede.ssid === current.ssid);
         } else {
             if (labelEl) labelEl.textContent = 'Rede Atual';
             ssidEl.textContent = 'Sem Wi-Fi conectado';
             metaEl.textContent = 'Abra Redes para escanear redes proximas';
-            if (routerBtn) routerBtn.disabled = !document.body.classList.contains('pwa-runtime');
+            if (routerBtn) routerBtn.disabled = true;
             if (saveBtn) saveBtn.disabled = true;
         }
     }
@@ -1180,51 +1192,41 @@ window.salvarRedeAtualPeloInicio = function() {
     if (typeof window.checarDuplicadoModal === 'function') window.checarDuplicadoModal();
 };
 
-window.mostrarToast = function(m) { 
-    const t = document.getElementById('toast'); 
-    t.innerText = m; 
-    t.className = 'show'; 
-    setTimeout(() => t.className = '', 3000); 
+window.atualizarElevacaoBotaoFlutuante = function() {
+    const candidatos = [
+        document.getElementById('toast'),
+        document.getElementById('toast-undo'),
+        document.getElementById('wifiCurrentPrompt')
+    ].filter(Boolean);
+    const ativos = candidatos.filter(el => el.classList.contains('show'));
+    const maiorAltura = ativos.reduce((max, el) => Math.max(max, el.offsetHeight || 0), 0);
+    document.body.classList.toggle('floating-add-lifted', maiorAltura > 0);
+    if (maiorAltura > 0) {
+        document.body.style.setProperty('--floating-add-lift', `${maiorAltura + 18}px`);
+    } else {
+        document.body.style.removeProperty('--floating-add-lift');
+    }
+};
+
+window.mostrarToast = function(m, options = {}) {
+    const t = document.getElementById('toast');
+    if (!t) return;
+    if (window.toastTimeout) clearTimeout(window.toastTimeout);
+    t.innerText = m;
+    t.className = '';
+    void t.offsetWidth;
+    t.className = 'show';
+    window.atualizarElevacaoBotaoFlutuante();
+    const duracao = Number(options.duration || options.duracao || 2600);
+    window.toastTimeout = setTimeout(() => {
+        t.className = '';
+        window.atualizarElevacaoBotaoFlutuante();
+    }, Number.isFinite(duracao) && duracao > 0 ? duracao : 2600);
 };
 
 window.mostrarSobreApp = function() {
     window.mostrarToast('Wi-Fi Manager Pro\nDesenvolvido por Rai Dias');
     if (typeof window.fecharMenuLateral === 'function') window.fecharMenuLateral();
-};
-
-window.abrirModalGerenciarRoteador = function() {
-    if (typeof window.fecharMenuLateral === 'function') window.fecharMenuLateral();
-    const modal = document.getElementById('modalGerenciarRoteadorPwa');
-    if (modal) modal.style.display = 'flex';
-};
-
-window.fecharModalGerenciarRoteador = function() {
-    const modal = document.getElementById('modalGerenciarRoteadorPwa');
-    if (modal) modal.style.display = 'none';
-};
-
-window.abrirEnderecoRoteador = function(ipOuUrl) {
-    const entrada = String(ipOuUrl || '').trim();
-    if (!entrada) {
-        window.mostrarToast('Digite o IP do roteador.');
-        return;
-    }
-
-    const valor = entrada.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
-    const ipv4 = valor.match(/^(\d{1,3}\.){3}\d{1,3}(:\d+)?$/);
-    if (!ipv4) {
-        window.mostrarToast('IP invalido. Exemplo: 192.168.1.1');
-        return;
-    }
-
-    const octetos = valor.split(':')[0].split('.').map(Number);
-    if (octetos.some(num => Number.isNaN(num) || num < 0 || num > 255)) {
-        window.mostrarToast('IP invalido. Cada bloco precisa estar entre 0 e 255.');
-        return;
-    }
-
-    window.open(`http://${valor}`, '_blank', 'noopener,noreferrer');
-    window.fecharModalGerenciarRoteador();
 };
 
 window.abrirModal = function() {
@@ -1261,7 +1263,7 @@ window.validarSenhaNovaModal = function() {
     const btnSalvar = document.getElementById('btnSalvarModal');
     if (!senhaInput || !btnSalvar) return true;
 
-    const senha = senhaInput.value;
+    const senha = senhaInput.value.trim();
     const senhaValida = senha.length >= 8;
     senhaInput.setCustomValidity(senhaValida || senha.length === 0 ? '' : 'A senha precisa ter no minimo 8 caracteres.');
     btnSalvar.disabled = !senhaValida;
@@ -1743,13 +1745,6 @@ window.addEventListener('DOMContentLoaded', async () => {
         } catch (e) {
             console.warn('Falha ao carregar banco local na abertura.', e);
         } finally {
-            window.wifiBancoLocalPronto = true;
-            window.dispatchEvent(new CustomEvent('wifi-local-db-ready', {
-                detail: { total: (window.redesEmMemoria || []).length }
-            }));
-            if (typeof window.atualizarPreScanWifiComBanco === 'function') {
-                window.atualizarPreScanWifiComBanco();
-            }
             window.atualizarDashboardLayout();
         }
     };
@@ -1882,11 +1877,13 @@ window.renderizarInterface = function(lista, radar = false) {
         div.className = 'card';
         div.dataset.nomeRede = ssid.toLowerCase();
 
-        const latF = parseFloat(String(r.lat).replace(',', '.'));
+        const coordsMapa = typeof window.obterCoordenadasRedeMapa === 'function' ? window.obterCoordenadasRedeMapa(r) : null;
+        const latF = coordsMapa ? coordsMapa.lat : parseFloat(String(r.lat).replace(',', '.'));
+        const temLocalMapa = !!coordsMapa || !!r.lat;
         const cardInfo = document.createElement('div');
         cardInfo.className = 'card-info';
 
-        if ((radar && !isNaN(latF)) || r.lat) {
+        if ((radar && !isNaN(latF)) || temLocalMapa) {
             const badge = document.createElement('div');
             badge.className = 'badge-geo';
             if (radar && !isNaN(latF)) {
@@ -1929,7 +1926,7 @@ window.renderizarInterface = function(lista, radar = false) {
 
         actions.appendChild(criarBotao('Copiar', 'var(--btn-copy-bg)', 'var(--text-main)', () => window.copy(senha)));
         actions.appendChild(criarBotao('Compartilhar', 'var(--success)', '#fff', () => window.compartilharRede(ssid, senha)));
-        actions.appendChild(criarBotao(r.lat ? 'Editar Local' : 'Add Local', r.lat ? 'var(--geo)' : '#6366F1', '#fff', () => window.abrirMapaParaRede(r.id, ssid, r.lat, r.lng)));
+        actions.appendChild(criarBotao(temLocalMapa ? 'Editar Local' : 'Add Local', temLocalMapa ? 'var(--geo)' : '#6366F1', '#fff', () => window.abrirMapaParaRede(r.id, ssid, coordsMapa ? coordsMapa.lat : r.lat, coordsMapa ? coordsMapa.lng : r.lng)));
         actions.appendChild(criarBotao('Editar', 'var(--warning)', '#fff', () => window.abrirModalEditar(r.id)));
 
         div.appendChild(cardInfo);
@@ -1953,24 +1950,29 @@ window.renderizarInterface = function(lista, radar = false) {
 
     const modalMapaGlobal = document.getElementById('modalMapaGlobal');
     if (window.mapGlobal && modalMapaGlobal && modalMapaGlobal.style.display === 'flex' && typeof window.renderizarMarcadoresMapaGlobal === 'function') {
-        window.requestAnimationFrame(() => {
-            window.renderizarMarcadoresMapaGlobal(!window.mapGlobalBoundsAplicado);
-        });
+        if (typeof window.agendarRenderizacaoMapaGlobal === 'function') {
+            window.agendarRenderizacaoMapaGlobal(!window.mapGlobalBoundsAplicado);
+        } else {
+            window.requestAnimationFrame(() => {
+                window.renderizarMarcadoresMapaGlobal(!window.mapGlobalBoundsAplicado);
+            });
+        }
     }
 };
 
 window.checarDuplicadoModal = function() {
-    const s = document.getElementById('novoSSID').value;
-    const p = document.getElementById('novaSenha').value;
+    const s = document.getElementById('novoSSID').value.trim(); 
+    const p = document.getElementById('novaSenha').value.trim();
     const bssidNovo = typeof window.normalizarWifiBssid === 'function'
         ? window.normalizarWifiBssid(window.novaRedeBssidSugerida)
         : String(window.novaRedeBssidSugerida || '').trim().toLowerCase();
     window.redeDuplicadaAtual = window.redesEmMemoria.find(r => {
-        if (!window.ssidWifiIguais(r.ssid, s) || String(r.senha || '') !== p) return false;
+        if (r.ssid !== s || r.senha !== p) return false;
         const bssidExistente = typeof window.normalizarWifiBssid === 'function'
             ? window.normalizarWifiBssid(r.bssid)
             : String(r.bssid || '').trim().toLowerCase();
-        if (bssidNovo && bssidExistente && bssidNovo !== bssidExistente) return true;
+        if (bssidNovo && bssidExistente && bssidNovo !== bssidExistente) return false;
+        if (bssidNovo && !bssidExistente) return false;
         return true;
     });
     
@@ -2000,6 +2002,9 @@ window.abrirModalEditar = function(id) {
     window.redeEditandoAtual = rede;
     document.getElementById('editSSID').value = rede.ssid;
     document.getElementById('editSenha').value = rede.senha;
+    const editBssid = document.getElementById('editBssid');
+    if (editBssid) editBssid.value = rede.bssid || '';
+    window.atualizarLocalEdicao();
     document.getElementById('modalEditarRede').style.display = 'flex';
 };
 
@@ -2008,13 +2013,103 @@ window.fecharModalEditar = function() {
     window.redeEditandoAtual = null;
 };
 
+window.limparBssidEdicao = function() {
+    const editBssid = document.getElementById('editBssid');
+    if (editBssid) {
+        editBssid.value = '';
+        editBssid.focus();
+    }
+};
+
+window.atualizarLocalEdicao = function() {
+    const status = document.getElementById('editLocalStatus');
+    const removeBtn = document.getElementById('btnRemoveLocalEdit');
+    const rede = window.redeEditandoAtual;
+    const coords = typeof window.obterCoordenadasRedeMapa === 'function'
+        ? window.obterCoordenadasRedeMapa(rede)
+        : (rede && Number.isFinite(Number(rede.lat)) && Number.isFinite(Number(rede.lng)) ? { lat: Number(rede.lat), lng: Number(rede.lng) } : null);
+
+    if (status) {
+        status.textContent = coords
+            ? `Local salvo: ${Number(coords.lat).toFixed(6)}, ${Number(coords.lng).toFixed(6)}`
+            : 'Sem local salvo.';
+    }
+    if (removeBtn) removeBtn.disabled = !coords;
+};
+
+window.editarLocalPeloModal = function() {
+    const rede = window.redeEditandoAtual;
+    if (!rede) return;
+    const coords = typeof window.obterCoordenadasRedeMapa === 'function' ? window.obterCoordenadasRedeMapa(rede) : null;
+    document.getElementById('modalEditarRede').style.display = 'none';
+    window.abrirMapaParaRede(rede.id, rede.ssid, coords ? coords.lat : rede.lat, coords ? coords.lng : rede.lng);
+};
+
+window.removerLocalEdicao = async function() {
+    const rede = window.redeEditandoAtual;
+    if (!rede) return;
+    const coords = typeof window.obterCoordenadasRedeMapa === 'function' ? window.obterCoordenadasRedeMapa(rede) : null;
+    if (!coords) {
+        window.mostrarToast('Esta rede ja esta sem local.');
+        window.atualizarLocalEdicao();
+        return;
+    }
+
+    if (!confirm(`Remover o local salvo de "${rede.ssid}"?`)) return;
+
+    const id = rede.id;
+    const index = window.redesEmMemoria.findIndex(r => r.id === id);
+    const redeAntes = index !== -1 ? { ...window.redesEmMemoria[index] } : { ...rede };
+    if (typeof window.removerCoordenadasLegadasRedeMapa === 'function') {
+        window.removerCoordenadasLegadasRedeMapa(redeAntes);
+    }
+    if (index !== -1) {
+        window.redesEmMemoria[index].lat = null;
+        window.redesEmMemoria[index].lng = null;
+        window.redesEmMemoria[index].logicalId = window.obterIdLogicoRede(window.redesEmMemoria[index]);
+        window.redeEditandoAtual = window.redesEmMemoria[index];
+    } else {
+        rede.lat = null;
+        rede.lng = null;
+    }
+
+    const patchLocal = { lat: null, lng: null };
+    if (navigator.onLine && typeof window.firebaseAtualizarObjeto === 'function' && !id.toString().startsWith('local_')) {
+        window.firebaseAtualizarObjeto(id, patchLocal);
+    } else if (!id.toString().startsWith('local_')) {
+        let filaUpdate = JSON.parse(localStorage.getItem('wifi_pro_updates_v1') || '{}');
+        filaUpdate[id] = { ...(filaUpdate[id] || {}), ...patchLocal };
+        localStorage.setItem('wifi_pro_updates_v1', JSON.stringify(filaUpdate));
+    }
+
+    await window.atualizarBackupLocal(window.redesEmMemoria);
+    if (typeof window.registrarOperacaoBanco === 'function') {
+        window.registrarOperacaoBanco('localizacao_removida', `Localizacao removida: ${redeAntes.ssid}`, redeAntes, {
+            latAnterior: redeAntes.lat ?? null,
+            lngAnterior: redeAntes.lng ?? null
+        });
+    }
+    window.atualizarLocalEdicao();
+    if (!window.mostrandoApenasProximas) window.renderizarInterface(window.redesEmMemoria);
+    window.atualizarContador(navigator.onLine ? 'sincronizando' : 'offline');
+    window.mostrarToast('Local removido da rede.');
+};
+
 window.salvarEdicaoRede = async function() {
     window.vibrar();
     if(!window.redeEditandoAtual) return;
-    const s = document.getElementById('editSSID').value;
-    const p = document.getElementById('editSenha').value;
+    const s = document.getElementById('editSSID').value.trim();
+    const p = document.getElementById('editSenha').value.trim();
+    const bssidDigitado = document.getElementById('editBssid')?.value || '';
     if(!s || !p) { window.mostrarToast("Preencha o nome e a senha!"); return; }
     if(p.length < 8) { window.mostrarToast("A senha deve ter no minimo 8 caracteres!"); return; }
+    const bssidLimpo = typeof window.normalizarWifiBssid === 'function'
+        ? window.normalizarWifiBssid(bssidDigitado)
+        : String(bssidDigitado || '').trim().toLowerCase();
+    if (bssidDigitado.trim() && !bssidLimpo) {
+        window.mostrarToast("BSSID invalido. Use AA:BB:CC:DD:EE:FF.");
+        return;
+    }
 
     const id = window.redeEditandoAtual.id;
     const index = window.redesEmMemoria.findIndex(r => r.id === id);
@@ -2023,14 +2118,18 @@ window.salvarEdicaoRede = async function() {
     if(index !== -1) {
         window.redesEmMemoria[index].ssid = s;
         window.redesEmMemoria[index].senha = p;
+        window.redesEmMemoria[index].bssid = bssidLimpo || null;
         window.redesEmMemoria[index].logicalId = window.obterIdLogicoRede(window.redesEmMemoria[index]);
     }
 
-    if (navigator.onLine && typeof window.firebaseEditarCredenciais === 'function' && !id.toString().startsWith('local_')) {
+    const patchEdicao = { ssid: s, senha: p, bssid: bssidLimpo || null };
+    if (navigator.onLine && typeof window.firebaseAtualizarObjeto === 'function' && !id.toString().startsWith('local_')) {
+        window.firebaseAtualizarObjeto(id, patchEdicao);
+    } else if (navigator.onLine && typeof window.firebaseEditarCredenciais === 'function' && !id.toString().startsWith('local_')) {
         window.firebaseEditarCredenciais(id, s, p);
     } else if (!id.toString().startsWith('local_')) {
         let filaUpdate = JSON.parse(localStorage.getItem('wifi_pro_updates_v1') || '{}');
-        filaUpdate[id] = { ssid: s, senha: p };
+        filaUpdate[id] = { ...(filaUpdate[id] || {}), ...patchEdicao };
         localStorage.setItem('wifi_pro_updates_v1', JSON.stringify(filaUpdate));
     }
 
@@ -2040,11 +2139,15 @@ window.salvarEdicaoRede = async function() {
         ...redeAntes,
         id,
         ssid: s,
-        senha: p
+        senha: p,
+        bssid: bssidLimpo || null
     }, {
         ssidAnterior: redeAntes.ssid || null,
         ssidNovo: s,
-        senhaAlterada: String(redeAntes.senha || '') !== p
+        senhaAlterada: String(redeAntes.senha || '') !== p,
+        bssidAnterior: redeAntes.bssid || null,
+        bssidNovo: bssidLimpo || null,
+        bssidAlterado: String(redeAntes.bssid || '') !== String(bssidLimpo || '')
     });
     if (!window.mostrandoApenasProximas) window.renderizarInterface(window.redesEmMemoria);
     window.atualizarContador(navigator.onLine ? 'sincronizando' : 'offline');
@@ -2074,8 +2177,11 @@ window.iniciarExclusao = function(id, ssid) {
 
     const tUndo = document.getElementById('toast-undo');
     document.getElementById('toast-undo-text').innerText = `Rede apagada.`;
+    tUndo.className = '';
+    void tUndo.offsetWidth;
     tUndo.className = 'show';
-    window.deleteTimeout = setTimeout(() => { window.confirmarExclusaoDefinitiva(); }, 5000);
+    window.atualizarElevacaoBotaoFlutuante();
+    window.deleteTimeout = setTimeout(() => { window.confirmarExclusaoDefinitiva(); }, 10000);
 };
 
 window.desfazerExclusao = function() {
@@ -2090,6 +2196,7 @@ window.desfazerExclusao = function() {
     window.atualizarContador(navigator.onLine ? 'sincronizando' : 'offline');
     window.redePendenteExclusao = null;
     document.getElementById('toast-undo').className = '';
+    window.atualizarElevacaoBotaoFlutuante();
     window.mostrarToast("Acao desfeita!");
 };
 
@@ -2108,6 +2215,7 @@ window.confirmarExclusaoDefinitiva = function() {
     window.redePendenteExclusao = null;
     const tUndo = document.getElementById('toast-undo');
     if(tUndo) tUndo.className = '';
+    window.atualizarElevacaoBotaoFlutuante();
 };
 
 window.atualizarGeoRedeExistente = async function() {
@@ -2216,9 +2324,9 @@ window.tentarConectarRedeRecemCadastrada = async function(rede, contextoWifi, co
 };
 
 window.salvarRedeLocal = async function() {
-    window.vibrar();
-    const s = document.getElementById('novoSSID').value;
-    const p = document.getElementById('novaSenha').value;
+    window.vibrar(); 
+    const s = document.getElementById('novoSSID').value.trim();
+    const p = document.getElementById('novaSenha').value.trim();
     if(!s || !p) { window.mostrarToast("Preencha os campos!"); return; }
     if(p.length < 8) {
         window.validarSenhaNovaModal();
@@ -2370,10 +2478,7 @@ window.importarListaTexto = async function() {
 
 window.normalizarBssidImportacao = function(bssid) {
     if (typeof window.normalizarWifiBssid === 'function') return window.normalizarWifiBssid(bssid);
-    let value = String(bssid || '').trim().toLowerCase().replace(/\s+/g, '').replace(/-/g, ':');
-    if (/^[0-9a-f]{12}$/.test(value)) {
-        value = value.match(/.{1,2}/g).join(':');
-    }
+    const value = String(bssid || '').trim().toLowerCase();
     if (!value || value === '02:00:00:00:00:00' || value === '00:00:00:00:00:00') return '';
     return /^[0-9a-f]{2}(:[0-9a-f]{2}){5}$/.test(value) ? value : '';
 };
@@ -2396,7 +2501,7 @@ window.parseBackupWifiTexto = function(texto) {
         if (atual && atual.ssid && atual.senha) {
             redes.push({
                 ssid: atual.ssid.trim(),
-                senha: atual.senha,
+                senha: atual.senha.trim(),
                 bssid: window.normalizarBssidImportacao(atual.bssid) || null,
                 lat: atual.lat ?? null,
                 lng: atual.lng ?? null
@@ -2442,9 +2547,9 @@ window.parseBackupWifiTexto = function(texto) {
 
         if (!atual) return;
 
-        const senha = linhaOriginal.match(/^\s*Senha:(.*)$/i);
+        const senha = linha.match(/^Senha:\s*(.*)$/i);
         if (senha) {
-            atual.senha = senha[1].startsWith(' ') ? senha[1].slice(1) : senha[1];
+            atual.senha = senha[1].trim();
             return;
         }
 

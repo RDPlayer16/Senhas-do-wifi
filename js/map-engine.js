@@ -9,10 +9,16 @@ window.fecharMapa = function() {
 window.fecharMapaGlobal = function() { 
     const m = document.getElementById('modalMapaGlobal');
     if(m) m.style.display = 'none'; 
+    clearTimeout(window.mapGlobalRenderTimer);
+    window.mapGlobalEmMovimento = false;
+    window.mapGlobalRenderPendente = false;
+    window.mapGlobalPopupAberto = false;
     if (window.marcadorUsuarioGlobal && window.mapGlobal) {
         window.mapGlobal.removeLayer(window.marcadorUsuarioGlobal);
         window.marcadorUsuarioGlobal = null;
     }
+    window.mapGlobalRedesCache = [];
+    window.mapGlobalMarkersIndice = new Map();
 };
 
 // =========================================================
@@ -22,7 +28,13 @@ window.map = null;
 window.mapMarker = null;
 window.mapGlobal = null; 
 window.mapGlobalMarkersLayer = null;
+window.mapGlobalRedesCache = [];
 window.mapGlobalBoundsAplicado = false;
+window.mapGlobalEmMovimento = false;
+window.mapGlobalRenderPendente = false;
+window.mapGlobalRenderTimer = null;
+window.mapGlobalPopupAberto = false;
+window.mapGlobalMarkersIndice = new Map();
 window.marcadorUsuarioGlobal = null;
 window.circuloUsuarioGlobal = null;
 window.TILE_OSM = 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
@@ -31,8 +43,199 @@ window.ATTR_OSM = '&copy; OpenStreetMap contributors';
 window.ATTR_SATELLITE = 'Tiles &copy; Esri';
 
 window.parseCoord = function(val) {
-    if (!val) return NaN;
-    return parseFloat(String(val).replace(/\s/g, '').replace(',', '.'));
+    if (val === null || val === undefined || val === '') return NaN;
+    const numero = Number.parseFloat(String(val).replace(/\s/g, '').replace(',', '.'));
+    return Number.isFinite(numero) ? numero : NaN;
+};
+
+window.validarParCoordenadasMapa = function(lat, lng) {
+    return Number.isFinite(lat) && Number.isFinite(lng) && lat >= -90 && lat <= 90 && lng >= -180 && lng <= 180;
+};
+
+window.parseParCoordenadasMapa = function(value) {
+    if (Array.isArray(value) && value.length >= 2) {
+        const lat = window.parseCoord(value[0]);
+        const lng = window.parseCoord(value[1]);
+        return window.validarParCoordenadasMapa(lat, lng) ? { lat, lng } : null;
+    }
+
+    if (value && typeof value === 'object') {
+        const latKeys = ['lat', 'latitude', 'gpsLat', 'geoLat', 'mapLat', 'coordLat'];
+        const lngKeys = ['lng', 'lon', 'long', 'longitude', 'gpsLng', 'gpsLon', 'geoLng', 'mapLng', 'coordLng'];
+        for (const latKey of latKeys) {
+            for (const lngKey of lngKeys) {
+                const lat = window.parseCoord(value[latKey]);
+                const lng = window.parseCoord(value[lngKey]);
+                if (window.validarParCoordenadasMapa(lat, lng)) return { lat, lng };
+            }
+        }
+    }
+
+    if (typeof value === 'string') {
+        const numeros = value.match(/-?\d+(?:[.,]\d+)?/g) || [];
+        for (let i = 0; i < numeros.length - 1; i++) {
+            const lat = window.parseCoord(numeros[i]);
+            const lng = window.parseCoord(numeros[i + 1]);
+            if (window.validarParCoordenadasMapa(lat, lng)) return { lat, lng };
+        }
+    }
+
+    return null;
+};
+
+window.obterGeoLegadoMapa = function() {
+    if (window.geoLegadoMapaCache !== undefined) return window.geoLegadoMapaCache;
+    const keys = [window.DB_GEO_KEY || 'wifi_pro_db_geo_v1', 'wifi_pro_db_geo_v1'];
+    for (const key of [...new Set(keys)]) {
+        try {
+            const raw = localStorage.getItem(key);
+            if (raw) {
+                window.geoLegadoMapaCache = JSON.parse(raw);
+                return window.geoLegadoMapaCache;
+            }
+        } catch (error) {}
+    }
+    window.geoLegadoMapaCache = null;
+    return null;
+};
+
+window.obterCoordenadasLegadasRedeMapa = function(rede) {
+    const geo = window.obterGeoLegadoMapa();
+    if (!geo || !rede) return null;
+
+    const normalizar = (value) => String(value || '').trim().toLowerCase();
+    const chavesRede = [
+        rede.id,
+        rede.logicalId,
+        rede.ssid,
+        normalizar(rede.ssid),
+        `${normalizar(rede.ssid)}|${normalizar(rede.senha)}`,
+        `${normalizar(rede.ssid)}|${normalizar(rede.bssid)}`
+    ].filter(Boolean);
+
+    const testarValor = (value) => {
+        const direto = window.parseParCoordenadasMapa(value);
+        if (direto) return direto;
+        if (value && typeof value === 'object') {
+            const campos = ['coordenadas', 'coords', 'coord', 'gps', 'geo', 'localizacao', 'location'];
+            for (const campo of campos) {
+                const coords = window.parseParCoordenadasMapa(value[campo]);
+                if (coords) return coords;
+            }
+        }
+        return null;
+    };
+
+    if (Array.isArray(geo)) {
+        for (const item of geo) {
+            if (!item) continue;
+            const combina = chavesRede.includes(item.id) || chavesRede.includes(item.redeId) || chavesRede.includes(item.logicalId) || chavesRede.includes(item.ssid) || chavesRede.includes(normalizar(item.ssid));
+            if (combina) {
+                const coords = testarValor(item);
+                if (coords) return coords;
+            }
+        }
+        return null;
+    }
+
+    if (typeof geo === 'object') {
+        for (const chave of chavesRede) {
+            const coords = testarValor(geo[chave]);
+            if (coords) return coords;
+        }
+
+        for (const [chave, value] of Object.entries(geo)) {
+            if (chavesRede.includes(chave) || chavesRede.includes(normalizar(chave))) {
+                const coords = testarValor(value);
+                if (coords) return coords;
+            }
+            if (value && typeof value === 'object') {
+                const combina = chavesRede.includes(value.id) || chavesRede.includes(value.redeId) || chavesRede.includes(value.logicalId) || chavesRede.includes(value.ssid) || chavesRede.includes(normalizar(value.ssid));
+                if (combina) {
+                    const coords = testarValor(value);
+                    if (coords) return coords;
+                }
+            }
+        }
+    }
+
+    return null;
+};
+
+window.removerCoordenadasLegadasRedeMapa = function(rede) {
+    if (!rede) return false;
+
+    const key = window.DB_GEO_KEY || 'wifi_pro_db_geo_v1';
+    let geo = null;
+    try {
+        const raw = localStorage.getItem(key);
+        if (!raw) return false;
+        geo = JSON.parse(raw);
+    } catch (error) {
+        return false;
+    }
+
+    const normalizar = (value) => String(value || '').trim().toLowerCase();
+    const chavesRede = [
+        rede.id,
+        rede.logicalId,
+        rede.ssid,
+        normalizar(rede.ssid),
+        `${normalizar(rede.ssid)}|${normalizar(rede.senha)}`,
+        `${normalizar(rede.ssid)}|${normalizar(rede.bssid)}`
+    ].filter(Boolean);
+
+    const combina = (value) => {
+        if (!value) return false;
+        return chavesRede.includes(value.id)
+            || chavesRede.includes(value.redeId)
+            || chavesRede.includes(value.logicalId)
+            || chavesRede.includes(value.ssid)
+            || chavesRede.includes(normalizar(value.ssid));
+    };
+
+    let mudou = false;
+    if (Array.isArray(geo)) {
+        const filtrado = geo.filter(item => !combina(item));
+        mudou = filtrado.length !== geo.length;
+        geo = filtrado;
+    } else if (geo && typeof geo === 'object') {
+        Object.keys(geo).forEach((chave) => {
+            if (chavesRede.includes(chave) || chavesRede.includes(normalizar(chave)) || combina(geo[chave])) {
+                delete geo[chave];
+                mudou = true;
+            }
+        });
+    }
+
+    if (!mudou) return false;
+    try {
+        localStorage.setItem(key, JSON.stringify(geo));
+        window.geoLegadoMapaCache = geo;
+    } catch (error) {}
+    return true;
+};
+
+window.obterCoordenadasRedeMapa = function(rede) {
+    if (!rede) return null;
+
+    const direto = window.parseParCoordenadasMapa(rede);
+    if (direto) return direto;
+
+    const campos = ['coordenadas', 'coords', 'coord', 'gps', 'geo', 'localizacao', 'location'];
+    for (const campo of campos) {
+        const coords = window.parseParCoordenadasMapa(rede[campo]);
+        if (coords) return coords;
+    }
+
+    const legado = window.obterCoordenadasLegadasRedeMapa(rede);
+    if (legado) {
+        rede.lat = legado.lat;
+        rede.lng = legado.lng;
+        return legado;
+    }
+
+    return null;
 };
 
 window.corrigirIconesLeaflet = function() {
@@ -41,7 +244,10 @@ window.corrigirIconesLeaflet = function() {
         L.Icon.Default.mergeOptions({
             iconRetinaUrl: './js/libs/images/marker-icon-2x.png',
             iconUrl: './js/libs/images/marker-icon.png',
-            shadowUrl: './js/libs/images/marker-shadow.png',
+            shadowUrl: null,
+            shadowRetinaUrl: null,
+            shadowSize: [0, 0],
+            shadowAnchor: [0, 0],
         });
     }
 };
@@ -57,7 +263,10 @@ window.calcularDistancia = function(la1, lo1, la2, lo2) {
 window.adicionarCamadasBaseMapa = function(mapInstance) {
     const padrao = L.tileLayer(window.TILE_OSM, {
         maxZoom: 19,
-        attribution: window.ATTR_OSM
+        attribution: window.ATTR_OSM,
+        updateWhenIdle: true,
+        updateWhenZooming: false,
+        keepBuffer: 1
     }).addTo(mapInstance);
 
     if (!navigator.onLine) {
@@ -69,7 +278,10 @@ window.adicionarCamadasBaseMapa = function(mapInstance) {
 
     const satelite = L.tileLayer(window.TILE_SATELLITE, {
         maxZoom: 19,
-        attribution: window.ATTR_SATELLITE
+        attribution: window.ATTR_SATELLITE,
+        updateWhenIdle: true,
+        updateWhenZooming: false,
+        keepBuffer: 1
     });
 
     L.control.layers({
@@ -115,7 +327,6 @@ window.criarPopupRedeMapa = function(r) {
     copiar.style.fontWeight = 'bold';
     copiar.style.cursor = 'pointer';
     copiar.style.width = '100%';
-    copiar.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
     copiar.style.marginBottom = '8px';
     copiar.addEventListener('click', () => window.copy(r.senha));
 
@@ -129,7 +340,6 @@ window.criarPopupRedeMapa = function(r) {
     adicionar.style.fontWeight = 'bold';
     adicionar.style.cursor = 'pointer';
     adicionar.style.width = '100%';
-    adicionar.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
     adicionar.style.marginBottom = '8px';
     adicionar.addEventListener('click', () => {
         if (typeof window.adicionarRedeNoCelular !== 'function') {
@@ -154,7 +364,6 @@ window.criarPopupRedeMapa = function(r) {
     editar.style.fontWeight = 'bold';
     editar.style.cursor = 'pointer';
     editar.style.width = '100%';
-    editar.style.boxShadow = '0 2px 4px rgba(0,0,0,0.1)';
     editar.addEventListener('click', () => {
         window.fecharMapaGlobal();
         window.abrirMapaParaRede(r.id, r.ssid, r.lat, r.lng);
@@ -173,53 +382,240 @@ window.criarPopupRedeMapa = function(r) {
 window.obterRedesComCoordenadasMapa = function() {
     return (window.redesEmMemoria || [])
         .map((r) => {
-            const lat = window.parseCoord(r.lat);
-            const lng = window.parseCoord(r.lng);
-            return { rede: r, lat, lng };
+            const coords = window.obterCoordenadasRedeMapa(r);
+            if (!coords) return null;
+            r.lat = coords.lat;
+            r.lng = coords.lng;
+            return { rede: r, lat: coords.lat, lng: coords.lng };
         })
-        .filter((item) => !isNaN(item.lat) && !isNaN(item.lng));
+        .filter(Boolean);
+};
+
+window.mesclarCoordenadasMapa = function(listaLocal) {
+    if (!Array.isArray(listaLocal) || !listaLocal.length) return false;
+    if (!Array.isArray(window.redesEmMemoria)) window.redesEmMemoria = [];
+
+    const normalizar = (value) => String(value || '').trim().toLowerCase();
+    const criarChaves = (rede) => [
+        rede && rede.id,
+        rede && rede.logicalId,
+        rede && `${normalizar(rede.ssid)}|${normalizar(rede.senha)}`,
+        rede && `${normalizar(rede.ssid)}|${normalizar(rede.bssid)}`,
+        rede && normalizar(rede.ssid)
+    ].filter(Boolean);
+
+    if (!window.redesEmMemoria.length) {
+        window.redesEmMemoria = listaLocal.map(rede => ({ ...rede }));
+        return true;
+    }
+
+    const indice = new Map();
+    window.redesEmMemoria.forEach((rede) => {
+        criarChaves(rede).forEach(chave => {
+            if (!indice.has(chave)) indice.set(chave, rede);
+        });
+    });
+
+    let mudou = false;
+    listaLocal.forEach((local) => {
+        const coordsLocal = window.obterCoordenadasRedeMapa(local);
+        const alvo = criarChaves(local).map(chave => indice.get(chave)).find(Boolean);
+        if (!alvo) return;
+        const coordsAlvo = window.obterCoordenadasRedeMapa(alvo);
+        if (coordsLocal && !coordsAlvo) {
+            alvo.lat = coordsLocal.lat;
+            alvo.lng = coordsLocal.lng;
+            mudou = true;
+        }
+        if (!alvo.bssid && local.bssid) {
+            alvo.bssid = local.bssid;
+            mudou = true;
+        }
+    });
+
+    return mudou;
+};
+
+window.prepararRedesMapaGlobal = async function() {
+    window.geoLegadoMapaCache = undefined;
+    if (!Array.isArray(window.redesEmMemoria)) window.redesEmMemoria = [];
+
+    let mudou = false;
+    if (typeof window.lerDoIndexedDB === 'function') {
+        try {
+            const pontosAtuais = window.obterRedesComCoordenadasMapa();
+            if (!window.redesEmMemoria.length || !pontosAtuais.length) {
+                const dadosLocal = await window.lerDoIndexedDB();
+                mudou = window.mesclarCoordenadasMapa(dadosLocal) || mudou;
+            }
+        } catch (error) {
+            console.warn('Mapa: falha ao ler banco local antes de abrir.', error);
+        }
+    }
+
+    const pontos = window.obterRedesComCoordenadasMapa();
+    if (mudou && pontos.length && typeof window.atualizarBackupLocal === 'function') {
+        window.atualizarBackupLocal(window.redesEmMemoria);
+    }
+    return pontos;
+};
+
+window.pausarMarcadoresMapaGlobal = function() {
+    // Mantem os pins visiveis durante o movimento; a otimizacao acontece no fim do arraste.
+};
+
+window.retornarMarcadoresMapaGlobal = function() {
+    if (!window.mapGlobal || !window.mapGlobalMarkersLayer) return;
+    if (!window.mapGlobal.hasLayer(window.mapGlobalMarkersLayer)) {
+        window.mapGlobalMarkersLayer.addTo(window.mapGlobal);
+    }
+};
+
+window.obterChaveMarcadorMapaGlobal = function(item) {
+    const rede = item && item.rede ? item.rede : {};
+    const id = rede.id || rede.logicalId || `${rede.ssid || ''}|${rede.senha || ''}|${rede.bssid || ''}`;
+    return `${id}|${Number(item.lat).toFixed(6)}|${Number(item.lng).toFixed(6)}`;
+};
+
+window.obterPontosVisiveisMapaGlobal = function(redesComGps) {
+    if (!window.mapGlobal || !Array.isArray(redesComGps)) return [];
+    try {
+        const bounds = window.mapGlobal.getBounds().pad(0.35);
+        return redesComGps.filter(({ lat, lng }) => bounds.contains([lat, lng]));
+    } catch (error) {
+        return redesComGps;
+    }
+};
+
+window.agendarRenderizacaoMapaGlobal = function(ajustarBounds = false) {
+    if (!window.mapGlobal || typeof window.renderizarMarcadoresMapaGlobal !== 'function') return;
+    if (window.mapGlobalEmMovimento || window.mapGlobalPopupAberto) {
+        window.mapGlobalRenderPendente = true;
+        return;
+    }
+
+    clearTimeout(window.mapGlobalRenderTimer);
+    window.mapGlobalRenderTimer = setTimeout(() => {
+        if (!window.mapGlobal || window.mapGlobalEmMovimento || window.mapGlobalPopupAberto) {
+            window.mapGlobalRenderPendente = true;
+            return;
+        }
+        window.renderizarMarcadoresMapaGlobal(ajustarBounds);
+    }, 90);
+};
+
+window.configurarAtualizacaoMapaGlobalQuandoParado = function(mapInstance) {
+    if (!mapInstance || mapInstance._wifiIdleUpdateConfigured) return;
+    mapInstance._wifiIdleUpdateConfigured = true;
+
+    mapInstance.on('movestart zoomstart', () => {
+        window.mapGlobalEmMovimento = true;
+    });
+
+    mapInstance.on('moveend zoomend', () => {
+        clearTimeout(window.mapGlobalRenderTimer);
+        window.mapGlobalRenderTimer = setTimeout(() => {
+            window.mapGlobalEmMovimento = false;
+            window.retornarMarcadoresMapaGlobal();
+            if (window.mapGlobal) window.mapGlobal.invalidateSize(false);
+            if (window.mapGlobalPopupAberto) {
+                window.mapGlobalRenderPendente = true;
+                return;
+            }
+            window.mapGlobalRenderPendente = false;
+            window.renderizarMarcadoresMapaGlobal(false);
+        }, 120);
+    });
+
+    mapInstance.on('popupopen', () => {
+        window.mapGlobalPopupAberto = true;
+    });
+
+    mapInstance.on('popupclose', () => {
+        window.mapGlobalPopupAberto = false;
+        if (window.mapGlobalRenderPendente && !window.mapGlobalEmMovimento) {
+            window.mapGlobalRenderPendente = false;
+            window.agendarRenderizacaoMapaGlobal(false);
+        }
+    });
 };
 
 window.renderizarMarcadoresMapaGlobal = function(ajustarBounds = true) {
     if (!window.mapGlobal || typeof L === 'undefined') return 0;
+    if ((window.mapGlobalEmMovimento || window.mapGlobalPopupAberto) && !ajustarBounds) {
+        window.mapGlobalRenderPendente = true;
+        return window.mapGlobalMarkersLayer && typeof window.mapGlobalMarkersLayer.getLayers === 'function'
+            ? window.mapGlobalMarkersLayer.getLayers().length
+            : 0;
+    }
 
     if (!window.mapGlobalMarkersLayer) {
         window.mapGlobalMarkersLayer = L.layerGroup().addTo(window.mapGlobal);
     }
+    if (!(window.mapGlobalMarkersIndice instanceof Map)) {
+        window.mapGlobalMarkersIndice = new Map();
+    }
 
-    window.mapGlobalMarkersLayer.clearLayers();
-    const pontos = [];
-    const redesComGps = window.obterRedesComCoordenadasMapa();
+    const redesComGps = Array.isArray(window.mapGlobalRedesCache) && window.mapGlobalRedesCache.length
+        ? window.mapGlobalRedesCache
+        : window.obterRedesComCoordenadasMapa();
 
-    redesComGps.forEach(({ rede, lat, lng }) => {
-        L.marker([lat, lng])
-            .bindPopup(window.criarPopupRedeMapa(rede))
-            .addTo(window.mapGlobalMarkersLayer);
-        pontos.push([lat, lng]);
-    });
-
-    window.mapGlobal.invalidateSize(true);
-
-    if (ajustarBounds && pontos.length > 0) {
-        if (pontos.length === 1) {
-            window.mapGlobal.setView(pontos[0], 17, { animate: false });
+    if (ajustarBounds && redesComGps.length > 0) {
+        const todosPontos = redesComGps.map(({ lat, lng }) => [lat, lng]);
+        if (todosPontos.length === 1) {
+            window.mapGlobal.setView(todosPontos[0], 17, { animate: false });
         } else {
-            window.mapGlobal.fitBounds(L.latLngBounds(pontos), {
+            window.mapGlobal.fitBounds(L.latLngBounds(todosPontos), {
                 padding: [50, 50],
-                maxZoom: 17,
+                maxZoom: 18,
                 animate: false
             });
         }
         window.mapGlobalBoundsAplicado = true;
     }
 
-    return pontos.length;
+    const redesVisiveis = window.obterPontosVisiveisMapaGlobal(redesComGps);
+    const chavesVisiveis = new Set();
+
+    const adicionarPin = ({ rede, lat, lng }) => {
+        const chave = window.obterChaveMarcadorMapaGlobal({ rede, lat, lng });
+        chavesVisiveis.add(chave);
+
+        let marker = window.mapGlobalMarkersIndice.get(chave);
+        if (!marker) {
+            marker = L.marker([lat, lng], {
+                keyboard: false,
+                riseOnHover: false
+            }).addTo(window.mapGlobalMarkersLayer);
+            marker.on('click', () => {
+                marker.bindPopup(window.criarPopupRedeMapa(marker._wifiRede)).openPopup();
+            });
+            window.mapGlobalMarkersIndice.set(chave, marker);
+        } else if (!window.mapGlobalMarkersLayer.hasLayer(marker)) {
+            marker.addTo(window.mapGlobalMarkersLayer);
+        }
+
+        marker._wifiRede = rede;
+        marker.setLatLng([lat, lng]);
+    };
+
+    redesVisiveis.forEach(adicionarPin);
+
+    window.mapGlobalMarkersIndice.forEach((marker, chave) => {
+        if (chavesVisiveis.has(chave)) return;
+        if (typeof marker.isPopupOpen === 'function' && marker.isPopupOpen()) return;
+        window.mapGlobalMarkersLayer.removeLayer(marker);
+        window.mapGlobalMarkersIndice.delete(chave);
+    });
+
+    window.mapGlobal.invalidateSize(false);
+    return redesVisiveis.length;
 };
 
 // =========================================================
-// 3. MOTOR DO MAPA GERAL (COM BOTÕES RESTAURADOS)
+// 3. MOTOR DO MAPA GERAL (LEGADO INATIVO)
 // =========================================================
-window.abrirMapaGlobal = function() {
+window.abrirMapaGlobalLegadoInativo = function() {
     if (typeof window.fecharMenuLateral === 'function') window.fecharMenuLateral();
     if (typeof L === 'undefined') { alert("Erro: Leaflet não carregado."); return; }
     window.corrigirIconesLeaflet();
@@ -240,6 +636,11 @@ window.abrirMapaGlobal = function() {
     window.mapGlobal = null;
     window.mapGlobalMarkersLayer = null;
     window.mapGlobalBoundsAplicado = false;
+    window.mapGlobalEmMovimento = false;
+    window.mapGlobalRenderPendente = false;
+    window.mapGlobalPopupAberto = false;
+    window.mapGlobalMarkersIndice = new Map();
+    clearTimeout(window.mapGlobalRenderTimer);
     containerGlobal.innerHTML = '';
     delete containerGlobal._leaflet_id;
 
@@ -253,6 +654,7 @@ window.abrirMapaGlobal = function() {
         window.mapGlobal = L.map(containerGlobal).setView([-15, -50], 4);
         window.adicionarCamadasBaseMapa(window.mapGlobal);
         window.mapGlobalMarkersLayer = L.layerGroup().addTo(window.mapGlobal);
+        window.configurarAtualizacaoMapaGlobalQuandoParado(window.mapGlobal);
 
         const redesenhar = (ajustarBounds = true) => {
             if (!window.mapGlobal) return;
@@ -296,8 +698,8 @@ window.abrirMapaGlobal = function() {
                 <div style="text-align: center; min-width: 140px; padding: 5px;">
                     <b style="font-size: 15px; color: var(--primary); display: block; margin-bottom: 5px;">${r.ssid}</b>
                     <span style="font-size: 13px; color: #555; display: block; margin-bottom: 12px; background: #f0f0f0; padding: 4px; border-radius: 4px;">${r.senha}</span>
-                    <button onclick="window.copy('${r.senha}')" style="background: var(--success); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1); margin-bottom: 8px;">📋 Copiar Senha</button>
-                    <button onclick="window.fecharMapaGlobal(); window.abrirMapaParaRede('${r.id}', '${r.ssid}', '${r.lat}', '${r.lng}')" style="background: var(--geo); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">🗺️ Editar Local</button>
+                    <button onclick="window.copy('${r.senha}')" style="background: var(--success); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%; margin-bottom: 8px;">📋 Copiar Senha</button>
+                    <button onclick="window.fecharMapaGlobal(); window.abrirMapaParaRede('${r.id}', '${r.ssid}', '${r.lat}', '${r.lng}')" style="background: var(--geo); color: white; border: none; padding: 8px 12px; border-radius: 6px; font-weight: bold; cursor: pointer; width: 100%;">🗺️ Editar Local</button>
                 </div>`;
             
             marker.bindPopup(window.criarPopupRedeMapa(r));
@@ -320,6 +722,79 @@ window.abrirMapaGlobal = function() {
         }, 300);
 
     }, 500); // Aumentado levemente para garantir que o DOM do modal esteja 100% pronto
+};
+
+// Abre o mapa usado pelo app: carrega todos os pins antes do enquadramento.
+window.abrirMapaGlobal = async function() {
+    if (typeof window.fecharMenuLateral === 'function') window.fecharMenuLateral();
+    if (typeof L === 'undefined') {
+        alert("Erro: Leaflet nao carregado.");
+        return;
+    }
+    window.corrigirIconesLeaflet();
+
+    const modalGlobal = document.getElementById('modalMapaGlobal');
+    const containerGlobal = document.getElementById('mapa-global-container');
+    if (!modalGlobal || !containerGlobal) return;
+
+    modalGlobal.style.display = 'flex';
+    if (window.mapGlobal) {
+        window.mapGlobal.remove();
+    }
+    window.mapGlobal = null;
+    window.mapGlobalMarkersLayer = null;
+    window.mapGlobalBoundsAplicado = false;
+    window.mapGlobalEmMovimento = false;
+    window.mapGlobalRenderPendente = false;
+    window.mapGlobalPopupAberto = false;
+    window.mapGlobalMarkersIndice = new Map();
+    clearTimeout(window.mapGlobalRenderTimer);
+    containerGlobal.innerHTML = '<div class="map-loading">Carregando pontos...</div>';
+    delete containerGlobal._leaflet_id;
+
+    try {
+        window.mapGlobalRedesCache = await window.prepararRedesMapaGlobal();
+    } catch (error) {
+        console.warn('Mapa: falha ao preparar pontos.', error);
+        window.mapGlobalRedesCache = window.obterRedesComCoordenadasMapa();
+    }
+
+    const totalGpsGlobal = window.mapGlobalRedesCache.length;
+    if (!totalGpsGlobal && typeof window.mostrarToast === 'function') {
+        window.mostrarToast("Nenhuma rede com GPS salvo ainda.");
+    }
+
+    const inicializarMapaGlobal = () => {
+        const rect = containerGlobal.getBoundingClientRect();
+        if (rect.width < 80 || rect.height < 80) {
+            setTimeout(inicializarMapaGlobal, 80);
+            return;
+        }
+
+        containerGlobal.innerHTML = '';
+        delete containerGlobal._leaflet_id;
+
+        window.mapGlobal = L.map(containerGlobal).setView([-15, -50], 4);
+        window.adicionarCamadasBaseMapa(window.mapGlobal);
+        window.mapGlobalMarkersLayer = L.layerGroup().addTo(window.mapGlobal);
+        window.configurarAtualizacaoMapaGlobalQuandoParado(window.mapGlobal);
+
+        const redesenhar = (ajustarBounds = true) => {
+            if (!window.mapGlobal) return;
+            window.mapGlobal.invalidateSize(false);
+            window.renderizarMarcadoresMapaGlobal(ajustarBounds);
+        };
+
+        window.requestAnimationFrame(() => {
+            redesenhar(true);
+            setTimeout(() => redesenhar(!window.mapGlobalBoundsAplicado), 120);
+            setTimeout(() => {
+                if (window.mapGlobal) window.mapGlobal.invalidateSize(false);
+            }, 450);
+        });
+    };
+
+    window.requestAnimationFrame(inicializarMapaGlobal);
 };
 
 window.mostrarMinhaLocalizacaoNoMapa = function() {
@@ -467,7 +942,11 @@ window.buscarSenhasPorPerto = function() {
     window.radarWatchId = navigator.geolocation.watchPosition((pos) => {
         const { latitude, longitude } = pos.coords;
         const proximas = window.redesEmMemoria.map(r => ({
-            ...r, d: window.calcularDistancia(latitude, longitude, window.parseCoord(r.lat), window.parseCoord(r.lng))
+            ...r,
+            __coordsMapa: window.obterCoordenadasRedeMapa(r)
+        })).map(r => ({
+            ...r,
+            d: r.__coordsMapa ? window.calcularDistancia(latitude, longitude, r.__coordsMapa.lat, r.__coordsMapa.lng) : Infinity
         })).filter(r => r.d <= 150).sort((a,b) => a.d - b.d);
         window.mostrandoApenasProximas = true;
         window.renderizarInterface(proximas, true);

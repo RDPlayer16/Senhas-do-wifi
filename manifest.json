@@ -1,15 +1,20 @@
 {
+  "id": "./",
   "name": "Wi-Fi Manager Pro",
   "short_name": "Wi-Fi Pro",
+  "description": "Gerenciador offline-first de senhas Wi-Fi salvas.",
   "start_url": "./index.html",
+  "scope": "./",
   "display": "standalone",
   "background_color": "#F3F4F6",
   "theme_color": "#4F46E5",
+  "orientation": "portrait",
   "icons": [
     {
-      "src": "https://cdn-icons-png.flaticon.com/512/93/93158.png",
+      "src": "./assets/app-icon-source.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
   ]
 }

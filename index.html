@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Wi-Fi Manager Pro - PWA Resiliente</title>
+    <title>Wi-Fi Manager Pro - Oficial 2.3</title>
     <link rel="manifest" href="manifest.json">
     <meta name="theme-color" content="#4F46E5">
 
@@ -18,7 +18,7 @@
             <div class="brand-icon">📶</div>
             <div>
                 <strong>Wi-Fi Manager Pro</strong>
-                <span id="brandVersionLabel">Versao 2.3 PWA</span>
+                <span>Versao 2.3 Oficial</span>
             </div>
         </div>
         <button onclick="window.mostrarTelaApp('home')"><span class="drawer-icon">⌂</span><span>Inicio</span></button>
@@ -26,7 +26,7 @@
         <button id="drawerWifiAction" onclick="window.abrirModalWifiReal()"><span class="drawer-icon">⌁</span><span>Redes Encontradas</span></button>
         <button onclick="window.abrirMapaGlobal()"><span class="drawer-icon">⌖</span><span>Mapa</span></button>
         <button onclick="window.abrirModalExportar()"><span class="drawer-icon">⇪</span><span>Backup e Exportacao</span></button>
-        <button onclick="window.abrirModalGerenciarRoteador && window.abrirModalGerenciarRoteador()"><span class="drawer-icon">&#9635;</span><span>Gerenciar Roteador</span></button>
+        <button class="native-only" onclick="window.abrirGerenciadorRoteador && window.abrirGerenciadorRoteador()"><span class="drawer-icon">▣</span><span>Gerenciar Roteador</span></button>
         <button onclick="window.abrirModalConfiguracoes()"><span class="drawer-icon">⚙</span><span>Configuracoes</span></button>
         <button class="developer-entry" onclick="window.abrirModalAvancado()"><span class="drawer-icon">◆</span><span>Modo Desenvolvedor</span></button>
         <button onclick="window.mostrarToast('Ajuda e suporte serao adicionados em uma proxima versao.')"><span class="drawer-icon">?</span><span>Ajuda e Suporte</span></button>
@@ -56,7 +56,7 @@
                 </div>
 
                 <div class="home-current-actions">
-                    <button id="btnHomeManageRouter" onclick="window.abrirModalGerenciarRoteador && window.abrirModalGerenciarRoteador()">&#9635; Gerenciar roteador</button>
+                    <button id="btnHomeManageRouter" class="native-only" onclick="window.abrirGerenciadorRoteador && window.abrirGerenciadorRoteador()">▣ Gerenciar roteador</button>
                     <button id="btnHomeSaveCurrent" class="native-only" onclick="window.salvarRedeAtualPeloInicio && window.salvarRedeAtualPeloInicio()">＋ Salvar rede atual</button>
                     <button id="btnHomeNewNetwork" onclick="window.abrirModal(); window.vibrar();">＋ Nova rede</button>
                     <button id="btnHomeRadar" class="pwa-only" data-radar-button onclick="window.buscarSenhasPorPerto()">⌖ Radar</button>
@@ -91,6 +91,8 @@
                 <div class="filter-tabs">
                     <button class="filter-tab active" data-filter="all" onclick="window.filtrarPainel('all')">Todas <span id="tabAllCount">0</span></button>
                     <button class="filter-tab" data-filter="recent" onclick="window.filtrarPainel('recent')">Recentes <span id="tabRecentCount">0</span></button>
+                    <button class="filter-tab" data-filter="mapped" onclick="window.filtrarPainel('mapped')">Mapeadas <span id="tabMappedCount">0</span></button>
+                    <button class="filter-tab" data-filter="bssid" onclick="window.filtrarPainel('bssid')">Com BSSID <span id="tabBssidCount">0</span></button>
                 </div>
                 <div class="content-area"><div id="output"></div></div>
             </section>
@@ -126,6 +128,7 @@
             <button id="btnWifiCurrentPromptAdd" type="button" class="wifi-current-prompt-add">Adicionar</button>
             <button id="btnWifiCurrentPromptDismiss" type="button" class="wifi-current-prompt-dismiss">Agora nao</button>
         </div>
+        <div class="wifi-current-prompt-progress"><span></span></div>
     </div>
 
     <div id="modalWifiReal" class="modal-overlay">
@@ -159,25 +162,6 @@
             <button onclick="window.vibrar(); window.exportarPDF(); window.fecharModalExportar();" style="background: #E11D48;">Arquivo PDF (.PDF)</button>
             <div style="display:flex; justify-content: center; margin-top:10px;">
                 <button style="background:var(--text-muted); width: 100%;" onclick="window.vibrar(); window.fecharModalExportar()">Cancelar</button>
-            </div>
-        </div>
-    </div>
-
-    <div id="modalGerenciarRoteadorPwa" class="modal-overlay">
-        <div class="modal-content router-modal">
-            <div class="modal-heading-row">
-                <h3>Gerenciar Roteador</h3>
-                <button class="wifi-close" onclick="window.vibrar(); window.fecharModalGerenciarRoteador()">Fechar</button>
-            </div>
-            <p class="router-helper">No PWA o navegador nao informa o gateway atual. Escolha um IP comum do roteador ou digite outro endereco.</p>
-            <div class="router-grid">
-                <button onclick="window.abrirEnderecoRoteador('192.168.1.1')"><strong>Roteador 1</strong><span>192.168.1.1</span></button>
-                <button onclick="window.abrirEnderecoRoteador('192.168.0.1')"><strong>Roteador 2</strong><span>192.168.0.1</span></button>
-                <button onclick="window.abrirEnderecoRoteador('192.168.7.1')"><strong>Roteador 3</strong><span>192.168.7.1</span></button>
-            </div>
-            <div class="router-custom">
-                <input type="text" id="routerCustomIp" placeholder="Outro IP manual">
-                <button class="btn-scan" onclick="window.abrirEnderecoRoteador(document.getElementById('routerCustomIp').value)">Abrir</button>
             </div>
         </div>
     </div>
@@ -357,6 +341,22 @@
 
             <input type="text" id="editSSID" placeholder="Nome da Rede (SSID)">
             <input type="text" id="editSenha" placeholder="Nova Senha">
+            <div class="bssid-editor">
+                <label for="editBssid">BSSID</label>
+                <div>
+                    <input type="text" id="editBssid" placeholder="AA:BB:CC:DD:EE:FF">
+                    <button type="button" class="btn-mini bssid-clear" onclick="window.vibrar(); window.limparBssidEdicao()">Remover</button>
+                </div>
+                <small>Use para trocar ou limpar o roteador salvo desta rede.</small>
+            </div>
+            <div class="location-editor">
+                <label>Localizacao</label>
+                <small id="editLocalStatus">Sem local salvo.</small>
+                <div class="location-editor-actions">
+                    <button type="button" class="btn-mini location-edit" onclick="window.vibrar(); window.editarLocalPeloModal()">Editar local</button>
+                    <button type="button" id="btnRemoveLocalEdit" class="btn-mini location-remove" onclick="window.vibrar(); window.removerLocalEdicao()">Remover local</button>
+                </div>
+            </div>
             <div style="display:flex; justify-content: space-between; margin-top:15px; gap: 10px;">
                 <button class="btn-delete" style="border: 1px solid var(--danger); background: transparent; color: var(--danger);" onclick="window.vibrar(); window.excluirPeloModalEditar()">Apagar</button>
                 <div style="display:flex; gap:10px;">
@@ -391,10 +391,33 @@
     <script type="module" src="./js/firebase-sync.js"></script>
 
     <script>
-      // Registro do Service Worker para suporte Offline PWA
-      if ('serviceWorker' in navigator) { 
-          window.addEventListener('load', () => {
+      // No APK nativo o cache PWA pode manter JS antigo; limpamos para usar os arquivos embutidos.
+      if ('serviceWorker' in navigator) {
+          window.addEventListener('load', async () => {
+              const isNative = !!(window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform());
+              if (isNative) {
+                  try {
+                      const registrations = await navigator.serviceWorker.getRegistrations();
+                      await Promise.all(registrations.map(reg => reg.unregister()));
+                      if ('caches' in window) {
+                          const keys = await caches.keys();
+                          await Promise.all(keys.map(key => caches.delete(key)));
+                      }
+                  } catch (err) {
+                      console.warn('Cache nativo nao pode ser limpo agora.', err);
+                  }
+                  return;
+              }
+
+              let refreshed = false;
+              navigator.serviceWorker.addEventListener('controllerchange', () => {
+                  if (refreshed) return;
+                  refreshed = true;
+                  window.location.reload();
+              });
+
               navigator.serviceWorker.register('./sw.js', { scope: './' }).then(reg => {
+                  reg.update();
                   console.log("PWA Protegido: Offline Ready");
               }).catch(err => {
                   console.error("Erro ao registrar Service Worker:", err);
