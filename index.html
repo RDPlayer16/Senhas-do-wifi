@@ -409,19 +409,72 @@
                   return;
               }
 
+              const hadController = !!navigator.serviceWorker.controller;
+              const reloadGuardKey = 'wifi_pro_sw_reload_guard_v1';
               let refreshed = false;
+              let registrationPwa = null;
+              let lastUpdateCheck = 0;
+
+              const ativarWorkerEmEspera = (registration) => {
+                  const waiting = registration?.waiting;
+                  if (waiting) waiting.postMessage({ type: 'SKIP_WAITING' });
+              };
+
+              const acompanharInstalacao = (registration) => {
+                  const worker = registration.installing;
+                  if (!worker) return;
+                  worker.addEventListener('statechange', () => {
+                      if (worker.state !== 'installed' || !navigator.serviceWorker.controller) return;
+                      if (typeof window.mostrarToast === 'function') {
+                          window.mostrarToast('Atualizando aplicativo...', { duration: 5000 });
+                      }
+                      worker.postMessage({ type: 'SKIP_WAITING' });
+                  });
+              };
+
+              const verificarAtualizacaoPwa = async (force = false) => {
+                  if (!registrationPwa || !navigator.onLine) return false;
+                  const now = Date.now();
+                  if (!force && now - lastUpdateCheck < 15000) return false;
+                  lastUpdateCheck = now;
+                  try {
+                      await registrationPwa.update();
+                      ativarWorkerEmEspera(registrationPwa);
+                      return true;
+                  } catch (err) {
+                      console.warn('Atualizacao do PWA sera tentada novamente quando houver internet.', err);
+                      return false;
+                  }
+              };
+
               navigator.serviceWorker.addEventListener('controllerchange', () => {
-                  if (refreshed) return;
+                  if (refreshed || !hadController) return;
+                  const lastReload = Number(sessionStorage.getItem(reloadGuardKey) || 0);
+                  if (Date.now() - lastReload < 10000) return;
                   refreshed = true;
+                  sessionStorage.setItem(reloadGuardKey, String(Date.now()));
                   window.location.reload();
               });
 
-              navigator.serviceWorker.register('./sw.js', { scope: './' }).then(reg => {
-                  reg.update();
-                  console.log("PWA Protegido: Offline Ready");
-              }).catch(err => {
-                  console.error("Erro ao registrar Service Worker:", err);
-              });
+              try {
+                  registrationPwa = await navigator.serviceWorker.register('./sw.js', {
+                      scope: './',
+                      updateViaCache: 'none'
+                  });
+                  registrationPwa.addEventListener('updatefound', () => acompanharInstalacao(registrationPwa));
+                  acompanharInstalacao(registrationPwa);
+                  ativarWorkerEmEspera(registrationPwa);
+                  await verificarAtualizacaoPwa(true);
+
+                  window.addEventListener('online', () => verificarAtualizacaoPwa(true));
+                  document.addEventListener('visibilitychange', () => {
+                      if (document.visibilityState === 'visible') verificarAtualizacaoPwa();
+                  });
+                  window.setInterval(() => verificarAtualizacaoPwa(), 15 * 60 * 1000);
+                  console.log('PWA protegido e pronto para atualizacao automatica.');
+              } catch (err) {
+                  console.error('Erro ao registrar Service Worker:', err);
+              }
           });
       }
     </script>

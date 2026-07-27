@@ -1,4 +1,4 @@
-const CACHE_NAME = 'wifi-manager-pwa-v23-offline-first-native-parity-v2';
+const CACHE_NAME = 'wifi-manager-pwa-v23-offline-first-auto-update-v3';
 const APP_SHELL = './index.html';
 
 const ASSETS = [
@@ -109,6 +109,12 @@ self.addEventListener('activate', (event) => {
       })
       .then(() => self.clients.claim())
   );
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener('fetch', (event) => {
