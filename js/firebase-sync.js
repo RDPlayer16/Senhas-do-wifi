@@ -40,6 +40,16 @@ window.iniciarFirebaseSeguro = async function() {
         return window.firebaseSyncState;
     }
 
+    function definirBancoOnline(online, origem = null) {
+        window.firebaseBancoOnline = online === true;
+        atualizarEstadoFirebaseSync({
+            databaseOnline: window.firebaseBancoOnline,
+            connectivityCheckedAt: Date.now(),
+            ...(origem ? { connectivityOrigin: origem } : {})
+        });
+        return window.firebaseBancoOnline;
+    }
+
     window.getFirebaseDiagnosticState = function() {
         try {
             return {
@@ -70,20 +80,26 @@ window.iniciarFirebaseSeguro = async function() {
     }
 
     async function firebaseRestRequest(path, options = {}) {
-        const headers = {
-            "Content-Type": "application/json",
-            ...(options.headers || {})
-        };
-        const response = await fetch(restUrl(path), {
-            cache: "no-store",
-            ...options,
-            headers
-        });
-        const text = await response.text();
-        if (!response.ok) {
-            throw new Error(`Firebase REST ${response.status}: ${text || response.statusText}`);
+        try {
+            const headers = {
+                "Content-Type": "application/json",
+                ...(options.headers || {})
+            };
+            const response = await fetch(restUrl(path), {
+                cache: "no-store",
+                ...options,
+                headers
+            });
+            const text = await response.text();
+            if (!response.ok) {
+                throw new Error(`Firebase REST ${response.status}: ${text || response.statusText}`);
+            }
+            definirBancoOnline(true, "rest");
+            return text ? JSON.parse(text) : null;
+        } catch (error) {
+            definirBancoOnline(false, "rest");
+            throw error;
         }
-        return text ? JSON.parse(text) : null;
     }
 
     function montarListaRedes(dados) {
@@ -127,7 +143,9 @@ window.iniciarFirebaseSeguro = async function() {
             listaNuvem = window.deduplicarListaRedes(listaNuvem);
         }
 
-        listaNuvem.sort((a, b) => String(a.ssid || "").localeCompare(String(b.ssid || "")));
+        listaNuvem = typeof window.ordenarRedesAlfabeticamente === "function"
+            ? window.ordenarRedesAlfabeticamente(listaNuvem)
+            : listaNuvem.sort((a, b) => String(a.ssid || "").localeCompare(String(b.ssid || ""), "pt-BR"));
 
         const snapshotBase = listaNuvem
             .map(r => [r.id, r.ssid, r.senha, r.bssid, r.lat, r.lng, r.createdAt].join("|"))
@@ -266,6 +284,7 @@ window.iniciarFirebaseSeguro = async function() {
             }
             return true;
         } catch (error) {
+            definirBancoOnline(false, "rest");
             console.warn("Firebase REST: falha ao carregar banco.", error);
             atualizarEstadoFirebaseSync({
                 mode: "rest",
@@ -419,15 +438,24 @@ window.iniciarFirebaseSeguro = async function() {
 
         const connectedRef = ref(db, ".info/connected");
         onValue(connectedRef, (snap) => {
-            if (snap.val() === true) {
+            const conectado = snap.val() === true;
+            definirBancoOnline(conectado, "sdk");
+            if (conectado) {
                 if (typeof window.sincronizarLogsPendentes === "function") {
                     window.sincronizarLogsPendentes();
                 }
                 if (typeof window.sincronizarPendentes === "function") {
                     window.sincronizarPendentes();
                 }
+                if (typeof window.atualizarContador === "function") {
+                    window.atualizarContador("sincronizado", (window.redesEmMemoria || []).length);
+                }
+            } else if (typeof window.atualizarContador === "function") {
+                window.atualizarContador("offline");
             }
         }, (error) => {
+            definirBancoOnline(false, "sdk");
+            if (typeof window.atualizarContador === "function") window.atualizarContador("offline");
             console.warn("Firebase SDK: falha no indicador de conexao.", error);
         });
 
@@ -463,7 +491,7 @@ window.iniciarFirebaseSeguro = async function() {
                 aplicarSnapshotRedes(snapshot.val(), "sdk_realtime").catch((error) => {
                     console.warn("Firebase SDK: falha ao aplicar redes em tempo real.", error);
                     if (typeof window.atualizarContador === "function") {
-                        window.atualizarContador("local");
+                        window.atualizarContador("offline");
                     }
                 });
             }, delay);
@@ -471,14 +499,14 @@ window.iniciarFirebaseSeguro = async function() {
             console.warn("Firebase SDK: falha ao escutar redes.", error);
             const ok = await window.carregarBancoFirebaseRest("erro_sdk_redes");
             if (!ok && typeof window.atualizarContador === "function") {
-                window.atualizarContador("local");
+                window.atualizarContador("offline");
             }
         });
     } catch (error) {
         console.warn("Firebase SDK indisponivel. Tentando REST.", error);
         const ok = await window.carregarBancoFirebaseRest("catch_sdk");
         if (!ok && typeof window.atualizarContador === "function") {
-            window.atualizarContador(navigator.onLine ? "local" : "offline");
+            window.atualizarContador("offline");
         }
     } finally {
         firebaseSyncStartInProgress = false;

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'wifi-manager-pwa-v23-offline-first-native-parity-v1';
+const CACHE_NAME = 'wifi-manager-pwa-v23-offline-first-native-parity-v2';
 const APP_SHELL = './index.html';
 
 const ASSETS = [

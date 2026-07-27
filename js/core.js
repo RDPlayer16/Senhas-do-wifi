@@ -8,6 +8,7 @@ window.APP_LOG_MIGRATED_KEY = 'wifi_pro_event_log_migrated_v1';
 window.MAINTENANCE_BACKUP_KEY = 'wifi_pro_maintenance_backup_v1';
 window.APP_LOG_LIMIT = 300;
 window.redesEmMemoria = [];
+window.firebaseBancoOnline = false;
 window.mostrandoApenasProximas = false;
 window.radarWatchId = null;
 window.redeDuplicadaAtual = null;
@@ -46,7 +47,23 @@ window.criarMetadadosCadastroRede = function(timestamp = Date.now()) {
 };
 
 window.normalizarRedeTexto = function(value) {
-    return String(value || '').trim().toLowerCase();
+    return String(value ?? '').toLocaleLowerCase('pt-BR');
+};
+
+window.compararRedesPorSsid = function(a, b) {
+    const ssidA = String(a?.ssid ?? '');
+    const ssidB = String(b?.ssid ?? '');
+    const opcoesBase = { usage: 'sort', sensitivity: 'base', numeric: true, ignorePunctuation: false };
+    const base = ssidA.localeCompare(ssidB, 'pt-BR', opcoesBase);
+    if (base !== 0) return base;
+
+    const exato = ssidA.localeCompare(ssidB, 'pt-BR', { ...opcoesBase, sensitivity: 'variant' });
+    if (exato !== 0) return exato;
+    return String(a?.id ?? '').localeCompare(String(b?.id ?? ''), 'pt-BR', { numeric: true });
+};
+
+window.ordenarRedesAlfabeticamente = function(lista) {
+    return (Array.isArray(lista) ? [...lista] : []).sort(window.compararRedesPorSsid);
 };
 
 window.hashTextoSimples = function(value) {
@@ -83,7 +100,7 @@ window.deduplicarListaRedes = function(lista) {
         resultado.push(rede);
     });
 
-    return resultado;
+    return window.ordenarRedesAlfabeticamente(resultado);
 };
 
 window.deduplicarRedesMemoria = function() {
@@ -141,7 +158,8 @@ window.criarBackupManutencao = async function(operacao = 'manual', meta = {}) {
         createdAtIso: new Date(timestamp).toISOString(),
         createdAtLocal: new Date(timestamp).toLocaleString('pt-BR'),
         totalRedes: (window.redesEmMemoria || []).length,
-        redes: (window.redesEmMemoria || []).map(rede => ({ ...window.aplicarIdLogicoRede({ ...rede }) })),
+        redes: window.ordenarRedesAlfabeticamente(window.redesEmMemoria || [])
+            .map(rede => ({ ...window.aplicarIdLogicoRede({ ...rede }) })),
         meta
     };
     localStorage.setItem(window.MAINTENANCE_BACKUP_KEY, JSON.stringify(backup));
@@ -181,7 +199,11 @@ window.exportarUltimoBackupManutencao = async function() {
         window.mostrarToast('Nenhum backup de manutencao para exportar.');
         return;
     }
-    const texto = JSON.stringify(backup, null, 2);
+    const backupOrdenado = {
+        ...backup,
+        redes: window.ordenarRedesAlfabeticamente(backup.redes || [])
+    };
+    const texto = JSON.stringify(backupOrdenado, null, 2);
     if (typeof window.salvarArquivoExportado === 'function') {
         await window.salvarArquivoExportado(
             `Backup_Manutencao_${backup.createdAt || Date.now()}.json`,
@@ -258,7 +280,7 @@ window.obterPossiveisDuplicatasBanco = function() {
             const assinaturas = new Set(grupo.redes.map(rede => window.obterAssinaturaDuplicataRede(rede)));
             return assinaturas.size > 1;
         })
-        .sort((a, b) => String(a.ssid || '').localeCompare(String(b.ssid || ''), 'pt-BR', { sensitivity: 'base' }));
+        .sort(window.compararRedesPorSsid);
 };
 
 window.obterResumoDuplicatasBanco = function() {
@@ -984,22 +1006,22 @@ window.filtrarListaPainel = function(lista, radar = false) {
         return window.obterRedesRecentes(base);
     }
     if (window.appCurrentFilter === 'mapped') {
-        return base.filter(rede => {
+        return window.ordenarRedesAlfabeticamente(base.filter(rede => {
             if (typeof window.obterCoordenadasRedeMapa === 'function') return !!window.obterCoordenadasRedeMapa(rede);
             const lat = window.parseCoord ? window.parseCoord(rede.lat) : parseFloat(String(rede.lat).replace(',', '.'));
             const lng = window.parseCoord ? window.parseCoord(rede.lng) : parseFloat(String(rede.lng).replace(',', '.'));
             return Number.isFinite(lat) && Number.isFinite(lng);
-        });
+        }));
     }
     if (window.appCurrentFilter === 'bssid') {
-        return base.filter(rede => {
+        return window.ordenarRedesAlfabeticamente(base.filter(rede => {
             const bssid = typeof window.normalizarWifiBssid === 'function'
                 ? window.normalizarWifiBssid(rede.bssid)
                 : String(rede.bssid || '').trim();
             return !!bssid;
-        });
+        }));
     }
-    return base;
+    return window.ordenarRedesAlfabeticamente(base);
 };
 
 window.obterRedesRecentes = function(lista, limite = 10) {
@@ -1392,7 +1414,11 @@ window.abrirModalAvancado = function() {
     window.fecharMenuLateral();
     document.getElementById('modalAvancado').style.display = 'flex'; 
     const inputOculta = document.getElementById('listaInputOculta');
-    inputOculta.value = window.redesEmMemoria.map(r => `* ${r.ssid}: ${r.senha}`).join('\n\n');
+    inputOculta.value = typeof window.montarTextoBackupWifi === 'function'
+        ? window.montarTextoBackupWifi()
+        : window.ordenarRedesAlfabeticamente(window.redesEmMemoria)
+            .map(r => `* ${r.ssid}: ${r.senha}`)
+            .join('\n\n');
     window.renderizarLogDesenvolvedor();
     window.renderizarBackupManutencao();
     window.renderizarEstadoDiagnosticoFirebase();
@@ -1558,12 +1584,13 @@ window.initDB = function() {
 };
 
 window.salvarNoIndexedDB = async function(lista) {
+    const listaOrdenada = window.ordenarRedesAlfabeticamente(lista);
     try {
         const db = await window.initDB();
         const tx = db.transaction('redes', 'readwrite');
         const store = tx.objectStore('redes');
         store.clear(); 
-        (Array.isArray(lista) ? lista : []).forEach(item => store.put(item));
+        listaOrdenada.forEach(item => store.put(item));
         return await new Promise((resolve, reject) => {
             let encerrado = false;
             const timeout = setTimeout(() => {
@@ -1584,7 +1611,7 @@ window.salvarNoIndexedDB = async function(lista) {
     } catch (e) {
         console.warn('Falha ao salvar no IndexedDB.', e);
         try {
-            localStorage.setItem('wifi_pro_backup_indexeddb_fallback_v1', JSON.stringify(Array.isArray(lista) ? lista : []));
+            localStorage.setItem('wifi_pro_backup_indexeddb_fallback_v1', JSON.stringify(listaOrdenada));
         } catch (fallbackError) {}
         return false;
     }
@@ -1600,7 +1627,7 @@ window.lerDoIndexedDB = async function() {
             let encerrado = false;
             const fallback = () => {
                 try {
-                    return JSON.parse(localStorage.getItem('wifi_pro_backup_indexeddb_fallback_v1') || '[]');
+                    return window.ordenarRedesAlfabeticamente(JSON.parse(localStorage.getItem('wifi_pro_backup_indexeddb_fallback_v1') || '[]'));
                 } catch (fallbackError) {
                     return [];
                 }
@@ -1616,13 +1643,13 @@ window.lerDoIndexedDB = async function() {
                 clearTimeout(timeout);
                 resolve(valor);
             };
-            request.onsuccess = () => finalizar(request.result || []);
+            request.onsuccess = () => finalizar(window.ordenarRedesAlfabeticamente(request.result || []));
             request.onerror = () => finalizar(fallback());
             tx.onabort = () => finalizar(fallback());
         });
     } catch (e) {
         try {
-            return JSON.parse(localStorage.getItem('wifi_pro_backup_indexeddb_fallback_v1') || '[]');
+            return window.ordenarRedesAlfabeticamente(JSON.parse(localStorage.getItem('wifi_pro_backup_indexeddb_fallback_v1') || '[]'));
         } catch (fallbackError) {
             return [];
         }
@@ -1630,8 +1657,10 @@ window.lerDoIndexedDB = async function() {
 };
 
 window.atualizarBackupLocal = async function(lista) {
-    await window.salvarNoIndexedDB(lista);
-    const txtBackup = lista.map(r => `* ${r.ssid}: ${r.senha}`).join('\n\n');
+    const listaOrdenada = window.ordenarRedesAlfabeticamente(lista);
+    if (lista === window.redesEmMemoria) window.redesEmMemoria = listaOrdenada;
+    await window.salvarNoIndexedDB(listaOrdenada);
+    const txtBackup = listaOrdenada.map(r => `* ${r.ssid}: ${r.senha}`).join('\n\n');
     const inputOculta = document.getElementById('listaInputOculta');
     if(inputOculta) inputOculta.value = txtBackup; 
 };
@@ -1649,6 +1678,8 @@ window.atualizarContador = function(modo, totalNuvem = 0) {
     const total = window.redesEmMemoria.length;
     
     let avisoPendentes = totalPendentes > 0 ? `<span style="color:#F59E0B; font-weight:bold; background:rgba(245, 158, 11, 0.15); padding:3px 8px; border-radius:6px; margin-left: 5px; border: 1px solid rgba(245, 158, 11, 0.3);">Pendentes: ${totalPendentes}</span>` : '';
+
+    if (modo === 'sincronizado' && window.firebaseBancoOnline !== true) modo = 'offline';
 
     if (modo === 'offline') {
         el.innerHTML = `<span style="color:var(--text-muted);">Offline (${total})</span> ${avisoPendentes}`;
@@ -1713,12 +1744,16 @@ window.sincronizarPendentes = async function() {
 
 // EVENTOS BASE DO APLICATIVO
 window.addEventListener('online', () => {
+    window.firebaseBancoOnline = false;
     window.atualizarContador('local');
     if (typeof window.sincronizarLogsPendentes === 'function') window.sincronizarLogsPendentes();
     if (typeof window.firebasePush === 'function') window.sincronizarPendentes();
 });
 
-window.addEventListener('offline', () => { window.atualizarContador('offline'); });
+window.addEventListener('offline', () => {
+    window.firebaseBancoOnline = false;
+    window.atualizarContador('offline');
+});
 
 if (window.matchMedia) {
     const themeMedia = window.matchMedia('(prefers-color-scheme: light)');
@@ -1747,7 +1782,7 @@ window.addEventListener('DOMContentLoaded', async () => {
         try {
         const dadosLocal = await window.lerDoIndexedDB();
         if (dadosLocal && dadosLocal.length > 0) {
-            window.redesEmMemoria = window.deduplicarListaRedes(dadosLocal);
+            window.redesEmMemoria = window.ordenarRedesAlfabeticamente(window.deduplicarListaRedes(dadosLocal));
             if (window.redesEmMemoria.length !== dadosLocal.length) {
                 window.registrarLogEvento('duplicata_removida', `${dadosLocal.length - window.redesEmMemoria.length} duplicata(s) removida(s) ao abrir o app`, {
                     removidas: dadosLocal.length - window.redesEmMemoria.length
@@ -1979,7 +2014,7 @@ window.renderizarInterface = function(lista, radar = false) {
 };
 
 window.checarDuplicadoModal = function() {
-    const s = document.getElementById('novoSSID').value.trim(); 
+    const s = document.getElementById('novoSSID').value;
     const p = document.getElementById('novaSenha').value.trim();
     const bssidNovo = typeof window.normalizarWifiBssid === 'function'
         ? window.normalizarWifiBssid(window.novaRedeBssidSugerida)
@@ -2116,10 +2151,10 @@ window.removerLocalEdicao = async function() {
 window.salvarEdicaoRede = async function() {
     window.vibrar();
     if(!window.redeEditandoAtual) return;
-    const s = document.getElementById('editSSID').value.trim();
+    const s = document.getElementById('editSSID').value;
     const p = document.getElementById('editSenha').value.trim();
     const bssidDigitado = document.getElementById('editBssid')?.value || '';
-    if(!s || !p) { window.mostrarToast("Preencha o nome e a senha!"); return; }
+    if(!s.trim() || !p) { window.mostrarToast("Preencha o nome e a senha!"); return; }
     if(p.length < 8) { window.mostrarToast("A senha deve ter no minimo 8 caracteres!"); return; }
     const bssidLimpo = typeof window.normalizarWifiBssid === 'function'
         ? window.normalizarWifiBssid(bssidDigitado)
@@ -2151,7 +2186,7 @@ window.salvarEdicaoRede = async function() {
         localStorage.setItem('wifi_pro_updates_v1', JSON.stringify(filaUpdate));
     }
 
-    window.redesEmMemoria.sort((a, b) => a.ssid.localeCompare(b.ssid));
+    window.redesEmMemoria = window.ordenarRedesAlfabeticamente(window.redesEmMemoria);
     window.atualizarBackupLocal(window.redesEmMemoria);
     window.registrarOperacaoBanco('rede_editada', `Rede editada: ${redeAntes.ssid || s}`, {
         ...redeAntes,
@@ -2207,7 +2242,7 @@ window.desfazerExclusao = function() {
     if (!window.redePendenteExclusao) return;
     clearTimeout(window.deleteTimeout);
     window.redesEmMemoria.push(window.redePendenteExclusao);
-    window.redesEmMemoria.sort((a, b) => a.ssid.localeCompare(b.ssid));
+    window.redesEmMemoria = window.ordenarRedesAlfabeticamente(window.redesEmMemoria);
     window.atualizarBackupLocal(window.redesEmMemoria);
     window.registrarOperacaoBanco('rede_exclusao_desfeita', `Exclusao desfeita: ${window.redePendenteExclusao.ssid}`, window.redePendenteExclusao);
     window.renderizarInterface(window.redesEmMemoria);
@@ -2342,10 +2377,10 @@ window.tentarConectarRedeRecemCadastrada = async function(rede, contextoWifi, co
 };
 
 window.salvarRedeLocal = async function() {
-    window.vibrar(); 
-    const s = document.getElementById('novoSSID').value.trim();
+    window.vibrar();
+    const s = document.getElementById('novoSSID').value;
     const p = document.getElementById('novaSenha').value.trim();
-    if(!s || !p) { window.mostrarToast("Preencha os campos!"); return; }
+    if(!s.trim() || !p) { window.mostrarToast("Preencha os campos!"); return; }
     if(p.length < 8) {
         window.validarSenhaNovaModal();
         window.mostrarToast("A senha precisa ter no minimo 8 caracteres.");
@@ -2439,7 +2474,7 @@ window.salvarRedeLocal = async function() {
         timestamp: metaCriacao.createdAt
     });
     window.deduplicarRedesMemoria();
-    window.redesEmMemoria.sort((a, b) => a.ssid.localeCompare(b.ssid));
+    window.redesEmMemoria = window.ordenarRedesAlfabeticamente(window.redesEmMemoria);
     await window.atualizarBackupLocal(window.redesEmMemoria);
     window.renderizarInterface(window.redesEmMemoria);
     if (typeof window.atualizarEstadoWifiComBanco === 'function') {
@@ -2486,7 +2521,7 @@ window.importarListaTexto = async function() {
     });
 
     if (adicionados > 0) {
-        window.redesEmMemoria.sort((a, b) => a.ssid.localeCompare(b.ssid));
+        window.redesEmMemoria = window.ordenarRedesAlfabeticamente(window.redesEmMemoria);
         await window.atualizarBackupLocal(window.redesEmMemoria);
         window.renderizarInterface(window.redesEmMemoria);
         window.mostrarToast(`${adicionados} redes importadas!`);
@@ -2518,7 +2553,7 @@ window.parseBackupWifiTexto = function(texto) {
     const finalizarAtual = () => {
         if (atual && atual.ssid && atual.senha) {
             redes.push({
-                ssid: atual.ssid.trim(),
+                ssid: String(atual.ssid),
                 senha: atual.senha.trim(),
                 bssid: window.normalizarBssidImportacao(atual.bssid) || null,
                 lat: atual.lat ?? null,
@@ -2564,6 +2599,16 @@ window.parseBackupWifiTexto = function(texto) {
         }
 
         if (!atual) return;
+
+        const ssidExato = linha.match(/^SSID exato:\s*(.+)$/i);
+        if (ssidExato) {
+            try {
+                atual.ssid = String(JSON.parse(ssidExato[1]));
+            } catch (error) {
+                atual.ssid = ssidExato[1];
+            }
+            return;
+        }
 
         const senha = linha.match(/^Senha:\s*(.*)$/i);
         if (senha) {
@@ -2662,7 +2707,7 @@ window.aplicarRedesImportadas = async function(redes) {
     });
 
     if (adicionados > 0 || atualizados > 0) {
-        window.redesEmMemoria.sort((a, b) => a.ssid.localeCompare(b.ssid));
+        window.redesEmMemoria = window.ordenarRedesAlfabeticamente(window.redesEmMemoria);
         await window.atualizarBackupLocal(window.redesEmMemoria);
         window.renderizarInterface(window.redesEmMemoria);
         if (typeof window.atualizarEstadoWifiComBanco === 'function') window.atualizarEstadoWifiComBanco();
@@ -2836,15 +2881,17 @@ window.salvarArquivoExportado = async function(fileName, mimeType, base64, fallb
 };
 
 window.montarTextoBackupWifi = function() {
+    const redesOrdenadas = window.ordenarRedesAlfabeticamente(window.redesEmMemoria);
     const linhas = [
         "Backup de Senhas Wi-Fi",
         `Gerado em: ${new Date().toLocaleString('pt-BR')}`,
-        `Total de redes: ${window.redesEmMemoria.length}`,
+        `Total de redes: ${redesOrdenadas.length}`,
         ""
     ];
 
-    window.redesEmMemoria.forEach((r, i) => {
+    redesOrdenadas.forEach((r, i) => {
         linhas.push(`${i + 1}. ${r.ssid || ''}`);
+        linhas.push(`SSID exato: ${JSON.stringify(String(r.ssid ?? ''))}`);
         linhas.push(`Senha: ${r.senha || ''}`);
         if (r.bssid) linhas.push(`BSSID: ${r.bssid}`);
         if (r.lat && r.lng) linhas.push(`Coordenadas: ${r.lat}, ${r.lng}`);
@@ -2889,6 +2936,7 @@ window.adicionarLinhaPdf = function(doc, texto, estado) {
 window.criarPdfBackupWifi = function() {
     const doc = new window.jspdf.jsPDF({ unit: 'mm', format: 'a4' });
     const estado = { margin: 12, y: 14, lineHeight: 6 };
+    const redesOrdenadas = window.ordenarRedesAlfabeticamente(window.redesEmMemoria);
 
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(15);
@@ -2897,10 +2945,10 @@ window.criarPdfBackupWifi = function() {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(10);
     window.adicionarLinhaPdf(doc, `Gerado em: ${new Date().toLocaleString('pt-BR')}`, estado);
-    window.adicionarLinhaPdf(doc, `Total de redes: ${window.redesEmMemoria.length}`, estado);
+    window.adicionarLinhaPdf(doc, `Total de redes: ${redesOrdenadas.length}`, estado);
     estado.y += 4;
 
-    window.redesEmMemoria.forEach((r, i) => {
+    redesOrdenadas.forEach((r, i) => {
         if (estado.y > 270) {
             doc.addPage();
             estado.y = estado.margin;
@@ -2909,6 +2957,7 @@ window.criarPdfBackupWifi = function() {
         doc.setFont('helvetica', 'bold');
         window.adicionarLinhaPdf(doc, `${i + 1}. ${r.ssid || ''}`, estado);
         doc.setFont('helvetica', 'normal');
+        window.adicionarLinhaPdf(doc, `SSID exato: ${JSON.stringify(String(r.ssid ?? ''))}`, estado);
         window.adicionarLinhaPdf(doc, `Senha: ${r.senha || ''}`, estado);
         if (r.bssid) window.adicionarLinhaPdf(doc, `BSSID: ${r.bssid}`, estado);
         if (r.lat && r.lng) window.adicionarLinhaPdf(doc, `Coordenadas: ${r.lat}, ${r.lng}`, estado);
