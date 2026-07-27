@@ -1,8 +1,9 @@
 {
   "id": "./",
-  "name": "Wi-Fi Manager Pro",
+  "name": "Wi-Fi Manager Pro 2.4 Oficial",
   "short_name": "Wi-Fi Pro",
-  "description": "Gerenciador offline-first de senhas Wi-Fi salvas.",
+  "description": "Wi-Fi Manager Pro 2.4 Oficial, gerenciador offline-first de senhas Wi-Fi salvas.",
+  "version": "2.4",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

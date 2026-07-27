@@ -152,7 +152,7 @@ window.criarBackupManutencao = async function(operacao = 'manual', meta = {}) {
     const timestamp = Date.now();
     const backup = {
         tipo: 'wifi_manager_backup_manutencao',
-        versao: '2.2',
+        versao: '2.4',
         operacao,
         createdAt: timestamp,
         createdAtIso: new Date(timestamp).toISOString(),
@@ -1265,7 +1265,7 @@ window.mostrarToast = function(m, options = {}) {
 };
 
 window.mostrarSobreApp = function() {
-    window.mostrarToast('Wi-Fi Manager Pro\nDesenvolvido por Rai Dias');
+    window.mostrarToast('Wi-Fi Manager Pro 2.4 Oficial\nDesenvolvido por Rai Dias');
     if (typeof window.fecharMenuLateral === 'function') window.fecharMenuLateral();
 };
 

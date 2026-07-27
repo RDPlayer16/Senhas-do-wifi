@@ -1,4 +1,4 @@
-const CACHE_NAME = 'wifi-manager-pwa-v23-offline-first-auto-update-v3';
+const CACHE_NAME = 'wifi-manager-pwa-v24-official-auto-update-v4';
 const APP_SHELL = './index.html';
 
 const ASSETS = [
