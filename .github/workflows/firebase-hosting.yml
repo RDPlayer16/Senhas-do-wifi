@@ -1,0 +1,31 @@
+name: Deploy Wi-Fi Manager Pro to Firebase Hosting
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: wifi-manager-pro-hosting-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: firebase-hosting-production
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      - name: Prepare static PWA
+        run: bash scripts/prepare-hosting.sh
+      - name: Authenticate Google Cloud via Workload Identity Federation
+        uses: google-github-actions/auth@v2
+        with:
+          workload_identity_provider: ${{ vars.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.GCP_DEPLOY_SERVICE_ACCOUNT }}
+      - name: Deploy to Firebase Hosting
+        run: npx --yes firebase-tools@14 deploy --only hosting --project wifi-manager-pro-44487 --non-interactive
